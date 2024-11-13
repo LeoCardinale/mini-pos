@@ -23,13 +23,16 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png'
           }
-        ]
+        ],
+        start_url: '/',
+        display: 'standalone',
+        background_color: '#ffffff'
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/api\.*/i,
+            urlPattern: ({ url }) => url.pathname.startsWith('/api'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
@@ -42,5 +45,11 @@ export default defineConfig({
         ]
       }
     })
-  ]
+  ],
+  server: {
+    port: 5173
+  },
+  preview: {
+    port: 5173
+  }
 })

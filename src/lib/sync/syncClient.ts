@@ -1,6 +1,7 @@
 import { syncQueueOperations, initDatabase } from '../database';
 import { SyncOperation, SyncRequest, SyncResponse } from '../../types/sync';
 import { EventEmitter } from '../utils/EventEmitter';
+import { config } from '../../config';
 
 // Definir los tipos de eventos que emitirá el cliente
 interface SyncEvents {
@@ -21,7 +22,7 @@ class SyncClient extends EventEmitter {
     private lastSyncTimestamp: number = 0;
     private intervalId?: number;
 
-    constructor(private apiUrl: string = 'http://localhost:3000/api') {
+    constructor(private apiUrl: string = config.apiUrl) {
         super();
     }
 
