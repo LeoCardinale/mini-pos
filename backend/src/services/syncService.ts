@@ -89,7 +89,7 @@ class SyncService {
 
     private async applyProductOperation(type: string, data: any): Promise<void> {
         // Remover campos que no están en el esquema
-        const { lastUpdated, id, ...productData } = data;
+        const { lastUpdated, ...productData } = data;
 
         switch (type) {
             case 'create':
