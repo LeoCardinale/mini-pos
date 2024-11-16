@@ -7,12 +7,17 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto',
       filename: 'sw.js',
+      manifestFilename: 'manifest.json',
       manifest: {
         name: 'Mini POS',
         short_name: 'Mini POS',
         description: 'Point of Sale System',
         theme_color: '#ffffff',
+        background_color: '#ffffff',
+        display: 'standalone',
+        start_url: '/',
         icons: [
           {
             src: '/icons/icon-192x192.png',
@@ -24,14 +29,10 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png'
           }
-        ],
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#ffffff'
+        ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        swDest: 'sw.js',
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api'),

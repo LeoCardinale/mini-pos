@@ -21,9 +21,6 @@ const registerServiceWorker = async () => {
 // Inicializar la aplicación antes de renderizar
 initializeApp()
   .then(() => {
-    // Registrar Service Worker después de la inicialización
-    registerServiceWorker();
-
     // Renderizar la aplicación
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
