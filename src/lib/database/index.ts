@@ -109,6 +109,19 @@ const enqueueSyncOperation = async (operation: Omit<SyncQueueItem, 'id' | 'times
 export const productOperations = {
     async create(product: Omit<Product, 'id'>) {
         const db = await initDatabase();
+
+        // Verificar si ya existe un producto similar
+        const allProducts = await db.getAll('products');
+        const duplicate = allProducts.find(p =>
+            p.name === product.name &&
+            p.price === product.price
+        );
+
+        if (duplicate) {
+            console.warn('Possible duplicate product detected:', product);
+            return duplicate.id;
+        }
+
         const id = await db.add('products', product);
 
         // Encolar para sincronización
