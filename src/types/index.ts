@@ -10,6 +10,8 @@ export interface Product {
     imageUrl?: string;
     barcode?: string;
     minStock?: number;
+    createdAt: Date;
+    updatedAt: Date;
 }
 
 export interface Transaction {

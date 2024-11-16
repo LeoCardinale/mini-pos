@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { Product } from '../../types';
 import { productOperations } from '../../lib/database';
 
+type ProductFormData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
+
 interface ProductFormProps {
     onSubmit: () => void;
     initialProduct?: Product;
@@ -58,15 +60,14 @@ const ProductForm: React.FC<ProductFormProps> = ({
         setIsLoading(true);
 
         try {
-            const productData = {
+            const productData: ProductFormData = {
                 name: formData.name,
                 barcode: formData.barcode || undefined,
                 category: formData.category,
                 price: parseFloat(formData.price),
                 stock: parseInt(formData.stock),
                 minStock: formData.minStock ? parseInt(formData.minStock) : undefined,
-                imageUrl: formData.imageUrl || undefined,
-                lastUpdated: Date.now()
+                imageUrl: formData.imageUrl || undefined
             };
 
             if (initialProduct) {

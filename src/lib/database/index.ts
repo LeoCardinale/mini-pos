@@ -1,5 +1,8 @@
 import { openDB, IDBPDatabase } from 'idb';
 
+type CreateProductData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
+type UpdateProductData = Partial<CreateProductData>;
+
 // Interfaces
 interface Product {
     id: number;
@@ -111,15 +114,19 @@ const enqueueSyncOperation = async (operation: Omit<SyncQueueItem, 'id' | 'times
 
 // Operaciones de productos
 export const productOperations = {
-    async create(product: Omit<Product, 'id'>) {
+    async create(product: CreateProductData) {
         const db = await initDatabase();
-        const id = await db.add('products', product);
+        const id = await db.add('products', {
+            ...product,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
 
         // Encolar para sincronización
         await enqueueSyncOperation({
             type: 'create',
             entity: 'product',
-            data: JSON.stringify({ ...product, id }),
+            data: JSON.stringify({ ...product, id, createdAt: new Date(), updatedAt: new Date() }),
             deviceId: localStorage.getItem('deviceId') || 'unknown',
             status: 'pending'
         });
@@ -127,12 +134,16 @@ export const productOperations = {
         return id;
     },
 
-    async update(id: number, product: Partial<Product>) {
+    async update(id: number, product: UpdateProductData) {
         const db = await initDatabase();
         const existingProduct = await db.get('products', id);
         if (!existingProduct) throw new Error('Product not found');
 
-        const updatedProduct = { ...existingProduct, ...product };
+        const updatedProduct = {
+            ...existingProduct,
+            ...product,
+            updatedAt: new Date()
+        };
         await db.put('products', updatedProduct);
 
         // Encolar para sincronización
