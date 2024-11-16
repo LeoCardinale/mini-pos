@@ -174,7 +174,18 @@ export const productOperations = {
 export const transactionOperations = {
     async create(transaction: Omit<Transaction, 'id'>) {
         const db = await initDatabase();
-        return await db.add('transactions', transaction);
+        const id = await db.add('transactions', transaction);
+
+        // Encolar para sincronización
+        await enqueueSyncOperation({
+            type: 'create',
+            entity: 'transaction',
+            data: JSON.stringify({ ...transaction, id }),
+            deviceId: localStorage.getItem('deviceId') || 'unknown',
+            status: 'pending'
+        });
+
+        return id;
     },
 
     async getAll() {
@@ -192,7 +203,18 @@ export const transactionOperations = {
 export const cashRegisterOperations = {
     async create(register: Omit<CashRegister, 'id'>) {
         const db = await initDatabase();
-        return await db.add('cashRegister', register);
+        const id = await db.add('cashRegister', register);
+
+        // Encolar para sincronización
+        await enqueueSyncOperation({
+            type: 'create',
+            entity: 'cashRegister',
+            data: JSON.stringify({ ...register, id }),
+            deviceId: localStorage.getItem('deviceId') || 'unknown',
+            status: 'pending'
+        });
+
+        return id;
     },
 
     async update(id: number, data: Partial<CashRegister>) {
