@@ -9,17 +9,23 @@ class SyncService {
             try {
                 console.log(`Processing operation: ${operation.type} ${operation.entity}`, operation);
 
+                // Verificar si la operación ya fue procesada
+                const existingOperation = await prisma.syncOperation.findUnique({
+                    where: { id: operation.id }
+                });
+
+                if (existingOperation) {
+                    console.log(`Operation ${operation.id} already processed, skipping`);
+                    continue;
+                }
+
                 // Convertir timestamp de number a bigint
                 const syncOp: SyncOperation = {
                     ...operation,
                     timestamp: BigInt(operation.timestamp)
                 };
 
-                // Primero aplicar la operación
-                await this.applyOperation(syncOp);
-                console.log('Operation applied successfully');
-
-                // Luego guardar el registro de la operación
+                // Primero guardar el registro de la operación como 'pending'
                 await prisma.syncOperation.create({
                     data: {
                         id: syncOp.id,
@@ -28,20 +34,39 @@ class SyncService {
                         entity: syncOp.entity,
                         data: syncOp.data,
                         deviceId: syncOp.deviceId,
-                        status: 'completed'
+                        status: 'pending'
                     }
                 });
-                console.log('Operation logged successfully');
+
+                // Luego aplicar la operación
+                await this.applyOperation(syncOp);
+                console.log('Operation applied successfully');
+
+                // Actualizar el estado a 'completed'
+                await prisma.syncOperation.update({
+                    where: { id: syncOp.id },
+                    data: { status: 'completed' }
+                });
+
+                console.log('Operation completed successfully');
             } catch (error) {
                 console.error(`Error processing operation ${operation.id}:`, error);
-                // Guardar la operación como fallida
-                await prisma.syncOperation.create({
-                    data: {
-                        ...operation,
-                        timestamp: BigInt(operation.timestamp),
-                        status: 'failed'
-                    }
-                });
+                // Actualizar la operación como fallida si existe
+                try {
+                    await prisma.syncOperation.update({
+                        where: { id: operation.id },
+                        data: { status: 'failed' }
+                    });
+                } catch {
+                    // Si no existe, crearla como fallida
+                    await prisma.syncOperation.create({
+                        data: {
+                            ...operation,
+                            timestamp: BigInt(operation.timestamp),
+                            status: 'failed'
+                        }
+                    });
+                }
             }
         }
     }

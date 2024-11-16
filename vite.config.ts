@@ -42,19 +42,11 @@ export default defineConfig({
               networkTimeoutSeconds: 10,
               cacheableResponse: {
                 statuses: [0, 200]
-              },
-              backgroundSync: {
-                name: 'apiQueue',
-                options: {
-                  maxRetentionTime: 24 * 60 // 24 horas
-                }
               }
             }
           }
         ],
-        cleanupOutdatedCaches: true,
-        skipWaiting: true,
-        clientsClaim: true
+        cleanupOutdatedCaches: true
       }
     })
   ],
