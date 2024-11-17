@@ -32,6 +32,9 @@ export default defineConfig({
         ]
       },
       workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
@@ -46,7 +49,11 @@ export default defineConfig({
             }
           }
         ],
-        cleanupOutdatedCaches: true
+        // Añadir estas configuraciones
+        navigationPreload: true,
+        offlineGoogleAnalytics: false,
+        sourcemap: true,
+        maximumFileSizeToCacheInBytes: 5000000
       }
     })
   ],
