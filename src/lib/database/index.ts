@@ -116,20 +116,36 @@ const enqueueSyncOperation = async (operation: Omit<SyncQueueItem, 'id' | 'times
 export const productOperations = {
     async create(product: CreateProductData) {
         const db = await initDatabase();
+        console.log('Creating product in IndexedDB:', product);
+
         const id = await db.add('products', {
             ...product,
             createdAt: new Date(),
             updatedAt: new Date()
         });
+        console.log('Product created with ID:', id);
 
-        // Encolar para sincronización
-        await enqueueSyncOperation({
-            type: 'create',
-            entity: 'product',
-            data: JSON.stringify({ ...product, id, createdAt: new Date(), updatedAt: new Date() }),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
-            status: 'pending'
-        });
+        try {
+            const productWithDates = {
+                ...product,
+                id,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            console.log('Preparing sync operation with data:', productWithDates);
+
+            const syncOp = await enqueueSyncOperation({
+                type: 'create',
+                entity: 'product',
+                data: JSON.stringify(productWithDates),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
+            console.log('Sync operation created:', syncOp);
+        } catch (error) {
+            console.error('Failed to create sync operation:', error);
+            throw error; // Re-lanzamos el error para manejarlo en el componente
+        }
 
         return id;
     },
