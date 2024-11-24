@@ -6,8 +6,8 @@
       "ES2020",
       "DOM"
     ],
-    "outDir": "dist",
-    "rootDir": ".",
+    "outDir": "./dist",
+    "rootDir": "./src", // Cambio importante aquí
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -19,11 +19,11 @@
     "resolveJsonModule": true
   },
   "include": [
-    "src/**/*",
-    "prisma/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "prisma"
   ]
 }
