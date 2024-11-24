@@ -22,21 +22,23 @@ model SyncOperation {
 }
 
 model Product {
-  id          Int       @id @default(autoincrement())
-  name        String
-  price       Float
-  stock       Int
-  category    String?
-  barcode     String?   @unique  // Añadido unique constraint
-  minStock    Int?
-  imageUrl    String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  createdBy   String    // Nuevo: referencia al usuario que lo creó
-  updatedBy   String    // Nuevo: referencia al último usuario que lo modificó
-  creator     User      @relation("ProductCreator", fields: [createdBy], references: [id])
-  updater     User      @relation("ProductUpdater", fields: [updatedBy], references: [id])
-  auditLogs   AuditLog[]
+    id          Int      @id @default(autoincrement())
+    name        String
+    supplier    Supplier? @relation(fields: [supplierId], references: [id])
+    supplierId  Int?
+    cost        Float
+    price       Float
+    stock       Int
+    category    String?
+    barcode     String?  @unique
+    minStock    Int?
+    imageUrl    String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    createdBy   String    
+    updatedBy   String    
+    creator     User      @relation("ProductCreator", fields: [createdBy], references: [id])
+    updater     User      @relation("ProductUpdater", fields: [updatedBy], references: [id])
 }
 
 model Transaction {
@@ -104,4 +106,20 @@ model AuditLog {
   productId Int?     // Opcional: referencia específica a producto si aplica
   product   Product? @relation(fields: [productId], references: [id])
   createdAt DateTime @default(now())
+}
+
+model Supplier {
+    id          Int       @id @default(autoincrement())
+    fiscalName  String
+    tradeName   String
+    contact     String?
+    phone       String?
+    email       String?
+    taxId       String?   // RIF/NIF
+    address     String?
+    notes       String?
+    active      Boolean   @default(true)
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    products    Product[]
 }
