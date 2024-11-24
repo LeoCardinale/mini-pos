@@ -151,6 +151,7 @@ export const productOperations = {
     },
 
     async update(id: number, product: UpdateProductData) {
+        console.log('Starting product update:', { id, updates: product });
         const db = await initDatabase();
         const existingProduct = await db.get('products', id);
         if (!existingProduct) throw new Error('Product not found');
@@ -160,16 +161,24 @@ export const productOperations = {
             ...product,
             updatedAt: new Date()
         };
-        await db.put('products', updatedProduct);
+        console.log('Prepared updated product:', updatedProduct);
 
-        // Encolar para sincronización
-        await enqueueSyncOperation({
-            type: 'update',
-            entity: 'product',
-            data: JSON.stringify(updatedProduct),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
-            status: 'pending'
-        });
+        try {
+            await db.put('products', updatedProduct);
+            console.log('Product updated in IndexedDB');
+
+            const syncOp = await enqueueSyncOperation({
+                type: 'update',
+                entity: 'product',
+                data: JSON.stringify(updatedProduct),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
+            console.log('Sync operation created for update:', syncOp);
+        } catch (error) {
+            console.error('Error during product update:', error);
+            throw error;
+        }
 
         return updatedProduct;
     },

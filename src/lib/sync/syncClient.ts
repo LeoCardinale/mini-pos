@@ -18,18 +18,16 @@ declare interface SyncClient {
 
 class SyncClient extends EventEmitter {
     private isRunning = false;
-    private syncInterval: number = 30000; // 30 segundos
+    private syncInterval: number = 30000;
     private lastSyncTimestamp: number = 0;
     private intervalId?: number;
-    private isOnline: boolean = true;  // Añadir esta línea
+    private isOnline: boolean = true;
 
     constructor(private apiUrl: string = config.apiUrl) {
         super();
-        // Añadir verificación de estado inicial
+        console.log('SyncClient initialized with URL:', this.apiUrl);
         this.isOnline = navigator.onLine;
-        console.log('Initial connection status:', this.isOnline);
 
-        // Mejorar listeners de conectividad
         window.addEventListener('online', () => {
             console.log('Connection restored');
             this.isOnline = true;
@@ -42,78 +40,62 @@ class SyncClient extends EventEmitter {
         });
     }
 
+    private getAuthToken(): string | null {
+        return localStorage.getItem('token');
+    }
+
     async start() {
         if (this.isRunning) return;
 
+        const token = this.getAuthToken();
+        if (!token) {
+            console.log('No auth token, skipping sync');
+            return;
+        }
+
         this.isRunning = true;
-
-        // Realizar sincronización inicial
         await this.initialSync();
-
         this.scheduleSync();
-
-        // Escuchar cambios en la conectividad
-        window.addEventListener('online', () => {
-            console.log('Connection restored. Starting sync...');
-            this.sync().catch(console.error);
-        });
     }
 
     private async initialSync() {
         try {
-            console.log('Performing initial sync...');
-
-            // Solo intentar sincronización si hay conexión
-            if (!this.isOnline) {
-                console.log('Skipping initial sync - offline');
+            const token = this.getAuthToken();
+            if (!token || !this.isOnline) {
                 return;
             }
 
-            // Verificar si hay operaciones pendientes antes de limpiar
+            console.log('Performing initial sync...');
             const pendingOps = await syncQueueOperations.getPendingOperations();
             if (pendingOps.length > 0) {
-                console.log('Found pending operations, skipping queue clear:', pendingOps.length);
                 return;
             }
 
-            try {
-                // Solicitar todas las operaciones desde el inicio del tiempo
-                const response = await fetch(`${this.apiUrl}/sync`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        operations: [],
-                        lastSyncTimestamp: 0,
-                        deviceId: localStorage.getItem('deviceId') || 'unknown'
-                    })
-                });
+            const response = await fetch(`${this.apiUrl}/sync`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    operations: [],
+                    lastSyncTimestamp: 0,
+                    deviceId: localStorage.getItem('deviceId') || 'unknown'
+                })
+            });
 
-                if (!response.ok) {
-                    throw new Error(`Initial sync failed: ${response.statusText}`);
-                }
+            if (!response.ok) {
+                throw new Error(`Initial sync failed: ${response.statusText}`);
+            }
 
-                const syncResponse: SyncResponse = await response.json();
-
-                if (syncResponse.success) {
-                    // Ahora sí podemos limpiar la cola ya que la sincronización fue exitosa
-                    await syncQueueOperations.clearAll();
-
-                    // Aplicar todas las operaciones recibidas
-                    await this.applyRemoteOperations(syncResponse.operations);
-                    this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
-                    console.log('Initial sync completed successfully');
-                }
-            } catch (error) {
-                console.error('Network error during initial sync:', error);
-                // No reintentamos automáticamente si hay error de red
-                return;
+            const syncResponse: SyncResponse = await response.json();
+            if (syncResponse.success) {
+                await syncQueueOperations.clearAll();
+                await this.applyRemoteOperations(syncResponse.operations);
+                this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
             }
         } catch (error) {
-            console.error('Error in initial sync process:', error);
-            // Solo reintentamos si no fue un error de red
-            setTimeout(() => this.initialSync(), 5000);
+            console.error('Initial sync error:', error);
         }
     }
 
@@ -124,47 +106,28 @@ class SyncClient extends EventEmitter {
         }
     }
 
-    // Hacemos público el método sync
     async sync(): Promise<void> {
-        if (!this.isOnline) {
-            console.log('Skipping sync - offline');
+        const token = this.getAuthToken();
+        if (!token || !this.isOnline) {
+            console.log('Skipping sync - no token or offline');
             return;
         }
 
         this.emit('syncStart');
         try {
-            // Obtener operaciones pendientes
             const pendingOperations = await syncQueueOperations.getPendingOperations();
-            console.log('Pending operations to sync:', pendingOperations);
 
-            if (pendingOperations.length === 0 && this.lastSyncTimestamp === 0) {
-                this.lastSyncTimestamp = Date.now();
-                console.log('No pending operations and initial sync, setting timestamp:', this.lastSyncTimestamp);
-                this.emit('syncComplete');
-                return;
-            }
-
-            // Preparar request
             const syncRequest: SyncRequest = {
-                operations: pendingOperations.map(op => ({
-                    ...op,
-                    timestamp: op.timestamp
-                })),
+                operations: pendingOperations,
                 lastSyncTimestamp: this.lastSyncTimestamp,
                 deviceId: localStorage.getItem('deviceId') || 'unknown'
             };
 
-            console.log('Sending sync request:', {
-                deviceId: syncRequest.deviceId,
-                operationsCount: syncRequest.operations.length,
-                lastSyncTimestamp: new Date(syncRequest.lastSyncTimestamp).toISOString()
-            });
-
-            // Enviar request
             const response = await fetch(`${this.apiUrl}/sync`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify(syncRequest)
             });
@@ -174,38 +137,19 @@ class SyncClient extends EventEmitter {
             }
 
             const syncResponse: SyncResponse = await response.json();
-            console.log('Received sync response:', {
-                success: syncResponse.success,
-                operationsCount: syncResponse.operations.length,
-                timestamp: new Date(syncResponse.lastSyncTimestamp).toISOString()
-            });
-
             if (syncResponse.success) {
-                // Marcar operaciones locales como completadas
-                console.log('Marking operations as completed:', pendingOperations.map(op => op.id));
                 await Promise.all(
                     pendingOperations.map(op =>
                         syncQueueOperations.markAsCompleted(op.id)
                     )
                 );
 
-                // Aplicar operaciones remotas
-                if (syncResponse.operations.length > 0) {
-                    console.log('Applying remote operations:', syncResponse.operations);
-                }
                 await this.applyRemoteOperations(syncResponse.operations);
-
-                // Actualizar timestamp
                 this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
-                console.log('Updated lastSyncTimestamp:', new Date(this.lastSyncTimestamp).toISOString());
-
-                // Limpiar operaciones completadas
                 await syncQueueOperations.clearCompleted();
-                console.log('Cleared completed operations');
-
                 this.emit('syncComplete');
             } else {
-                throw new Error(syncResponse.error || 'Sync failed without specific error');
+                throw new Error(syncResponse.error || 'Sync failed');
             }
         } catch (error) {
             // Convertir el error a una instancia de Error si no lo es

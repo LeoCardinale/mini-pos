@@ -1,53 +1,74 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { SyncProvider } from './context/SyncContext';
-import SyncStatus from './components/sync/SyncStatus';
+// src/App.tsx
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import Navigation from './components/Navigation';
+import UsersPage from './pages/admin/UsersPage';
 
 // Pages
+import Login from './pages/Login';
 import POSPage from './pages/pos/POSPage';
 import InventoryPage from './pages/inventory/InventoryPage';
 import RegisterControl from './pages/register/RegisterControl';
 
 function App() {
   return (
-    <SyncProvider>
+    <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gray-100">
-          <nav className="bg-white shadow-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16">
-                <div className="flex">
-                  <a href="/" className="flex items-center px-2 text-gray-900">
-                    Mini POS
-                  </a>
-                  <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                    <a href="/pos" className="text-gray-900 inline-flex items-center px-1 pt-1">
-                      Punto de Venta
-                    </a>
-                    <a href="/inventory" className="text-gray-900 inline-flex items-center px-1 pt-1">
-                      Inventario
-                    </a>
-                    <a href="/register" className="text-gray-900 inline-flex items-center px-1 pt-1">
-                      Caja
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </nav>
-
-          <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-gray-50">
+          <Navigation />
+          <main className="p-4">
             <Routes>
-              <Route path="/" element={<POSPage />} />
-              <Route path="/pos" element={<POSPage />} />
-              <Route path="/inventory" element={<InventoryPage />} />
-              <Route path="/register" element={<RegisterControl />} />
+              {/* Ruta pública */}
+              <Route path="/login" element={<Login />} />
+
+              {/* Ruta por defecto - redirige a login */}
+              <Route path="/" element={<Navigate to="/login" replace />} />
+
+              {/* Rutas protegidas */}
+              <Route
+                path="/inventory"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <InventoryPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/pos"
+                element={
+                  <ProtectedRoute>
+                    <POSPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/register"
+                element={
+                  <ProtectedRoute>
+                    <RegisterControl />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/users"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <UsersPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Ruta para manejar URLs no encontradas */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
-
-          <SyncStatus />
         </div>
       </Router>
-    </SyncProvider>
+    </AuthProvider>
   );
 }
 

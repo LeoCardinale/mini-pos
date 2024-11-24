@@ -7,6 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Modelos existentes con algunas mejoras
 model SyncOperation {
   id        String   @id @default(uuid())
   timestamp BigInt
@@ -16,28 +17,37 @@ model SyncOperation {
   deviceId  String
   status    String   // 'pending' | 'completed' | 'failed'
   createdAt DateTime @default(now())
+  userId    String?  // Nuevo: referencia al usuario que realizó la operación
+  user      User?    @relation(fields: [userId], references: [id])
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   name        String
   price       Float
   stock       Int
   category    String?
-  barcode     String?
+  barcode     String?   @unique  // Añadido unique constraint
   minStock    Int?
   imageUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   String    // Nuevo: referencia al usuario que lo creó
+  updatedBy   String    // Nuevo: referencia al último usuario que lo modificó
+  creator     User      @relation("ProductCreator", fields: [createdBy], references: [id])
+  updater     User      @relation("ProductUpdater", fields: [updatedBy], references: [id])
+  auditLogs   AuditLog[]
 }
 
 model Transaction {
-  id          Int      @id @default(autoincrement())
-  amount      Float
-  type        String
-  createdAt   DateTime @default(now())
-  deviceId    String
+  id           Int      @id @default(autoincrement())
+  amount       Float
+  type         String   // PaymentMethod: 'cash' | 'card' | 'transfer'
+  createdAt    DateTime @default(now())
+  deviceId     String
   customerName String?
+  userId       String   // Nuevo: referencia al usuario que realizó la transacción
+  user         User     @relation(fields: [userId], references: [id])
 }
 
 model CashRegister {
@@ -48,4 +58,50 @@ model CashRegister {
   openedAt      DateTime  @default(now())
   closedAt      DateTime?
   deviceId      String
+  userId        String    // Nuevo: referencia al usuario que opera la caja
+  user          User      @relation(fields: [userId], references: [id])
+}
+
+// Nuevos modelos para autenticación y auditoría
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          Role      @relation(fields: [roleId], references: [id])
+  roleId        Int
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+
+  // Relaciones
+  syncOperations    SyncOperation[]
+  transactions      Transaction[]
+  cashRegisters     CashRegister[]
+  productsCreated   Product[]      @relation("ProductCreator")
+  productsUpdated   Product[]      @relation("ProductUpdater")
+  auditLogs         AuditLog[]
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // 'admin' | 'user'
+  permissions String[] // Array de permisos
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String   // 'create' | 'update' | 'delete'
+  entity    String   // Nombre de la entidad afectada
+  entityId  String   // ID de la entidad afectada
+  changes   String   // JSON con los cambios realizados
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  productId Int?     // Opcional: referencia específica a producto si aplica
+  product   Product? @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
 }

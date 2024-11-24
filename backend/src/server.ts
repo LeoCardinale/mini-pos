@@ -1,58 +1,48 @@
+// backend/src/server.ts
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import cookieParser from 'cookie-parser';
+import authRoutes from './routes/authRoutes';
 import syncRoutes from './routes/syncRoutes';
-import { config } from './config';
+import { authenticate } from './middleware/auth';
+import userRoutes from './routes/userRoutes';
+import productRoutes from './routes/productRoutes';
 
 const app = express();
-const prisma = new PrismaClient();
 
-// Middleware para logging
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log(`${req.method} ${req.path}`);
     next();
 });
 
-// Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// Middleware
+// Middlewares globales
+app.use(express.json());
+app.use(cookieParser());
 app.use(cors({
-    origin: config.corsOrigin,
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    credentials: true
 }));
 
-// Aumentar límite del payload
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Rutas de autenticación (públicas)
+app.use('/api/auth', authRoutes);
 
-// Rutas
-app.use('/api', syncRoutes);
+// Rutas protegidas
+app.use('/api/sync', authenticate, syncRoutes);
 
-// Ruta de salud
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        env: config.nodeEnv
-    });
+app.use('/api/admin/users', authenticate, userRoutes);
+
+app.use('/api/products', productRoutes);
+
+// Manejo de errores global
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-app.listen(config.port, () => {
-    console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
-    console.log(`CORS enabled for origin: ${config.corsOrigin}`);
-    console.log('Available routes:');
-    console.log('- POST /api/sync');
-    console.log('- GET /health');
+// Iniciar el servidor
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
 
-// Manejo de señales de terminación
-process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
-    prisma.$disconnect();
-    process.exit(0);
-});
+export default app;
