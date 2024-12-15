@@ -1,6 +1,7 @@
 // src/components/pos/Cart.tsx
-import React from 'react';
+import { useState } from 'react';
 import { Product } from '../../types';
+
 
 interface CartItem {
     product: Product;
@@ -11,8 +12,10 @@ interface CartProps {
     items: CartItem[];
     onUpdateQuantity: (productId: number, quantity: number) => void;
     onRemoveItem: (productId: number) => void;
-    onCheckout: () => void;
+    onCheckout: (discount?: number) => void;
     onClearCart: () => void;
+    discount: number;              // Nuevo
+    onDiscountChange: (value: number) => void;  // Nuevo
 }
 
 const Cart: React.FC<CartProps> = ({
@@ -20,12 +23,16 @@ const Cart: React.FC<CartProps> = ({
     onUpdateQuantity,
     onRemoveItem,
     onCheckout,
-    onClearCart
+    onClearCart,
+    discount,
+    onDiscountChange
 }) => {
-    const total = items.reduce(
+
+    const subtotal = items.reduce(
         (sum, item) => sum + item.product.price * item.quantity,
         0
     );
+    const total = Math.max(0, subtotal - discount);
 
     if (items.length === 0) {
         return (
@@ -91,7 +98,19 @@ const Cart: React.FC<CartProps> = ({
                 <div className="mb-4">
                     <div className="flex justify-between mb-2">
                         <span className="font-medium">Subtotal:</span>
-                        <span>${total.toFixed(2)}</span>
+                        <span>${subtotal.toFixed(2)}</span>
+                    </div>
+                    {/* Agregar aquí el input de descuento */}
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="font-medium">Discount:</span>
+                        <input
+                            type="number"
+                            min="0"
+                            max={subtotal}
+                            value={discount}
+                            onChange={(e) => onDiscountChange(Math.min(subtotal, Math.max(0, parseFloat(e.target.value) || 0)))}
+                            className="w-20 px-2 py-1 border rounded-md"
+                        />
                     </div>
                     <div className="flex justify-between text-lg font-bold">
                         <span>Total:</span>
@@ -100,7 +119,7 @@ const Cart: React.FC<CartProps> = ({
                 </div>
 
                 <button
-                    onClick={onCheckout}
+                    onClick={() => onCheckout(discount)}
                     className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
                 >
                     Complete Sale (${total.toFixed(2)})

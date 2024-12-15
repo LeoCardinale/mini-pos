@@ -4,7 +4,8 @@ import { PaymentMethod } from '../../types';
 
 interface CheckoutModalProps {
     total: number;
-    onComplete: (paymentMethod: PaymentMethod, customerName: string) => void;
+    discount: number;
+    onComplete: (paymentMethod: PaymentMethod, customerName: string, discount: number) => void;
     onCancel: () => void;
 }
 
@@ -12,6 +13,7 @@ const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({
     total,
+    discount,
     onComplete,
     onCancel
 }) => {
@@ -20,7 +22,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onComplete(paymentMethod, customerName);
+        onComplete(paymentMethod, customerName, discount);
     };
 
     return (
@@ -29,6 +31,25 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <h2 className="text-xl font-bold mb-4">Complete Sale</h2>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Amount Details
+                        </label>
+                        <div className="text-3xl font-bold space-y-2">
+                            <div className="text-lg text-gray-600">
+                                Subtotal: ${(total + discount).toFixed(2)}
+                            </div>
+                            {discount > 0 && (
+                                <div className="text-lg text-red-600">
+                                    Discount: -${discount.toFixed(2)}
+                                </div>
+                            )}
+                            <div className="text-green-600">
+                                Total: ${total.toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Total Amount
@@ -74,7 +95,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <div className="flex gap-3 pt-4">
                         <button
                             type="submit"
-                            className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700"
+                            //onClick={() => onComplete(paymentMethod, customerName, discount)}
+                            className="flex-1 bg-green-600 text-white py-2 rounded-md hover:bg-green-700"
                         >
                             Complete
                         </button>

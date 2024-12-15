@@ -21,7 +21,8 @@ export const getProducts = async (req: Request, res: Response) => {
 
 export const createProduct = async (req: Request, res: Response) => {
     try {
-        const { name, price, stock, category, barcode, minStock } = req.body;
+        const { name, price, cost, stock, category, barcode, minStock, supplierId, imageUrl } = req.body;
+        console.log('Creating product with image:', imageUrl ? 'Image present' : 'No image');
         const user = (req as AuthRequest).user;
 
         if (!user) {
@@ -29,37 +30,52 @@ export const createProduct = async (req: Request, res: Response) => {
         }
 
         // Validaciones básicas
-        if (!name || price === undefined || stock === undefined) {
-            return res.status(400).json({ error: 'Name, price and stock are required' });
+        if (!name || price === undefined || cost === undefined || stock === undefined) {
+            return res.status(400).json({ error: 'Name, price, cost and stock are required' });
         }
 
-        // Verificar si el código de barras ya existe
+        // Verificar si ya existe un producto con el mismo nombre
+        const existingName = await prisma.product.findFirst({
+            where: { name: { equals: name, mode: 'insensitive' } }
+        });
+
+        if (existingName) {
+            return res.status(400).json({ error: 'A product with this name already exists' });
+        }
+
+        // Verificar si existe un producto con el mismo código de barras (si se proporciona)
         if (barcode) {
-            const existingProduct = await prisma.product.findFirst({
+            const existingBarcode = await prisma.product.findFirst({
                 where: { barcode }
             });
 
-            if (existingProduct) {
-                return res.status(400).json({ error: 'Barcode already exists' });
+            if (existingBarcode) {
+                return res.status(400).json({ error: 'A product with this barcode already exists' });
             }
         }
 
+        const productData = {
+            name,
+            price: Number(price),
+            cost: Number(cost),
+            stock: Number(stock),
+            category,
+            barcode,
+            minStock: minStock ? Number(minStock) : null,
+            imageUrl,
+            isActive: req.body.isActive ?? true,
+            createdBy: user.userId,
+            updatedBy: user.userId
+        };
+
+        if (supplierId) {
+            Object.assign(productData, { supplierId: Number(supplierId) });
+        }
+
         const product = await prisma.product.create({
-            data: {
-                name,
-                price: Number(price),
-                stock: Number(stock),
-                category,
-                barcode,
-                minStock: minStock ? Number(minStock) : null,
-                creator: {
-                    connect: { id: user.userId }
-                },
-                updater: {
-                    connect: { id: user.userId }
-                }
-            }
+            data: productData
         });
+        console.log('Product saved with imageUrl:', product.imageUrl ? 'Yes' : 'No');
 
         res.status(201).json(product);
     } catch (error) {
@@ -71,14 +87,13 @@ export const createProduct = async (req: Request, res: Response) => {
 export const updateProduct = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { name, price, stock, category, barcode, minStock } = req.body;
+        const { name, price, stock, category, barcode, minStock, isActive, imageUrl } = req.body;  // Agregar imageUrl
         const user = (req as AuthRequest).user;
 
         if (!user) {
             return res.status(401).json({ error: 'User not authenticated' });
         }
 
-        // Verificar si el producto existe
         const existingProduct = await prisma.product.findUnique({
             where: { id: Number(id) }
         });
@@ -87,39 +102,59 @@ export const updateProduct = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Product not found' });
         }
 
-        // Verificar si el nuevo código de barras ya existe en otro producto
-        if (barcode && barcode !== existingProduct.barcode) {
-            const barcodeExists = await prisma.product.findFirst({
-                where: {
-                    barcode,
-                    id: { not: Number(id) }
-                }
-            });
-
-            if (barcodeExists) {
-                return res.status(400).json({ error: 'Barcode already exists' });
-            }
-        }
+        const updateData = {
+            name,
+            price: price !== undefined ? Number(price) : undefined,
+            stock: stock !== undefined ? Number(stock) : undefined,
+            category,
+            barcode,
+            minStock: minStock ? Number(minStock) : null,
+            isActive: isActive ?? existingProduct.isActive,
+            imageUrl: imageUrl || undefined,  // Agregar esta línea
+            updatedBy: user.userId
+        };
 
         const product = await prisma.product.update({
             where: { id: Number(id) },
-            data: {
-                name,
-                price: price !== undefined ? Number(price) : undefined,
-                stock: stock !== undefined ? Number(stock) : undefined,
-                category,
-                barcode,
-                minStock: minStock ? Number(minStock) : null,
-                updater: {
-                    connect: { id: user.userId }
-                }
-            }
+            data: updateData
         });
 
         res.json(product);
     } catch (error) {
         console.error('Error updating product:', error);
         res.status(500).json({ error: 'Error updating product' });
+    }
+};
+
+export const toggleProductStatus = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        console.log('Backend: Attempting to toggle product status for ID:', id);
+
+        // Primero obtener el estado actual
+        const currentProduct = await prisma.product.findUnique({
+            where: { id: Number(id) }
+        });
+        console.log('Backend: Current product state:', currentProduct);
+
+        if (!currentProduct) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+
+        // Luego actualizar al estado opuesto
+        const product = await prisma.product.update({
+            where: { id: Number(id) },
+            data: {
+                isActive: !currentProduct.isActive,
+                updatedBy: (req as AuthRequest).user!.userId
+            }
+        });
+        console.log('Backend: Updated product state:', product);
+
+        res.json(product);
+    } catch (error) {
+        console.error('Backend: Error toggling product status:', error);
+        res.status(500).json({ error: 'Error toggling product status' });
     }
 };
 

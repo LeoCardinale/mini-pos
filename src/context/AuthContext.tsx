@@ -1,6 +1,7 @@
 // src/context/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { syncClient } from '../lib/sync/syncClient';
+import { config } from '../config';
 
 interface User {
     id: string;
@@ -34,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const validateToken = async (token: string) => {
         try {
-            const response = await fetch('http://localhost:3000/api/auth/validate', {
+            const response = await fetch('`${config.apiUrl}/auth/validate', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -55,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const login = async (email: string, password: string) => {
         try {
-            const response = await fetch('http://localhost:3000/api/auth/login', {
+            const response = await fetch(`${config.apiUrl}/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

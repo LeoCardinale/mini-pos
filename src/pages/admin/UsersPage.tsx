@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import UserForm from '../../components/admin/UserForm';
+import { config } from '../../config';
 
 interface User {
     id: string;
@@ -24,7 +25,7 @@ const UsersPage = () => {
 
     const loadUsers = async () => {
         try {
-            const response = await fetch('http://localhost:3000/api/admin/users', {
+            const response = await fetch(`${config.apiUrl}/admin/users`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 }
@@ -43,7 +44,7 @@ const UsersPage = () => {
 
     const handleCreateUser = async (userData: any) => {
         try {
-            const response = await fetch('http://localhost:3000/api/admin/users', {
+            const response = await fetch(`${config.apiUrl}/admin/users`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -66,7 +67,7 @@ const UsersPage = () => {
 
     const handleToggleStatus = async (userId: string) => {
         try {
-            const response = await fetch(`http://localhost:3000/api/admin/users/${userId}/toggle-status`, {
+            const response = await fetch(`${config.apiUrl}/admin/users/${userId}/toggle-status`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -127,8 +128,8 @@ const UsersPage = () => {
                                 <td className="px-6 py-4 whitespace-nowrap">{user.role}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.active
-                                            ? 'bg-green-100 text-green-800'
-                                            : 'bg-red-100 text-red-800'
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-red-100 text-red-800'
                                         }`}>
                                         {user.active ? 'Active' : 'Inactive'}
                                     </span>

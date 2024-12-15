@@ -10,6 +10,10 @@ import Login from './pages/Login';
 import POSPage from './pages/pos/POSPage';
 import InventoryPage from './pages/inventory/InventoryPage';
 import RegisterControl from './pages/register/RegisterControl';
+import SuppliersPage from './pages/admin/SuppliersPage';
+import AccountsPage from './pages/accounts/AccountsPage';
+import AccountDetailPage from './pages/accounts/AccountDetailPage';
+
 
 function App() {
   return (
@@ -31,6 +35,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['admin']}>
                     <InventoryPage />
+                  </ProtectedRoute>
+                } />
+
+              <Route
+                path="/admin/suppliers"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <SuppliersPage />
                   </ProtectedRoute>
                 }
               />
@@ -58,6 +70,24 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['admin']}>
                     <UsersPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/accounts"
+                element={
+                  <ProtectedRoute>
+                    <AccountsPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/accounts/:id"
+                element={
+                  <ProtectedRoute>
+                    <AccountDetailPage />
                   </ProtectedRoute>
                 }
               />

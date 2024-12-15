@@ -1,28 +1,11 @@
 import { openDB, IDBPDatabase } from 'idb';
+import { config } from '../../config';
+import { Product, Transaction } from '../../types';
 
 type CreateProductData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
 type UpdateProductData = Partial<CreateProductData>;
 
 // Interfaces
-interface Product {
-    id: number;
-    name: string;
-    price: number;
-    stock: number;
-    category?: string;
-    barcode?: string;
-    minStock?: number;
-    imageUrl?: string;
-    createdAt: Date;
-    updatedAt: Date;
-}
-interface Transaction {
-    id: number;
-    amount: number;
-    type: string;
-    createdAt: Date;
-}
-
 interface CashRegister {
     id: number;
     status: 'open' | 'closed';
@@ -115,94 +98,139 @@ const enqueueSyncOperation = async (operation: Omit<SyncQueueItem, 'id' | 'times
 // Operaciones de productos
 export const productOperations = {
     async create(product: CreateProductData) {
-        const db = await initDatabase();
-        console.log('Creating product in IndexedDB:', product);
-
-        const id = await db.add('products', {
+        console.log('Starting product creation with data:', {
             ...product,
-            createdAt: new Date(),
-            updatedAt: new Date()
+            imageUrl: product.imageUrl ? 'Base64 image exists' : 'No image'
         });
-        console.log('Product created with ID:', id);
 
         try {
-            const productWithDates = {
-                ...product,
-                id,
-                createdAt: new Date(),
-                updatedAt: new Date()
+            const response = await fetch(`${config.apiUrl}/products`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(product)
+            });
+
+            console.log('Server response status:', response.status);
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('Server error:', error);
+                throw new Error(error.error || 'Error creating product');
+            }
+
+            const serverProduct = await response.json();
+
+            // Si el backend acepta, entonces guardar en IndexedDB
+            const db = await initDatabase();
+            const productToStore = {
+                ...serverProduct,
+                createdAt: new Date(serverProduct.createdAt),
+                updatedAt: new Date(serverProduct.updatedAt)
             };
-            console.log('Preparing sync operation with data:', productWithDates);
 
-            const syncOp = await enqueueSyncOperation({
-                type: 'create',
-                entity: 'product',
-                data: JSON.stringify(productWithDates),
-                deviceId: localStorage.getItem('deviceId') || 'unknown',
-                status: 'pending'
-            });
-            console.log('Sync operation created:', syncOp);
+            await db.put('products', productToStore);
+            console.log('Product created successfully:', JSON.stringify(productToStore, null, 2));
+
+            return serverProduct.id;
         } catch (error) {
-            console.error('Failed to create sync operation:', error);
-            throw error; // Re-lanzamos el error para manejarlo en el componente
-        }
-
-        return id;
-    },
-
-    async update(id: number, product: UpdateProductData) {
-        console.log('Starting product update:', { id, updates: product });
-        const db = await initDatabase();
-        const existingProduct = await db.get('products', id);
-        if (!existingProduct) throw new Error('Product not found');
-
-        const updatedProduct = {
-            ...existingProduct,
-            ...product,
-            updatedAt: new Date()
-        };
-        console.log('Prepared updated product:', updatedProduct);
-
-        try {
-            await db.put('products', updatedProduct);
-            console.log('Product updated in IndexedDB');
-
-            const syncOp = await enqueueSyncOperation({
-                type: 'update',
-                entity: 'product',
-                data: JSON.stringify(updatedProduct),
-                deviceId: localStorage.getItem('deviceId') || 'unknown',
-                status: 'pending'
-            });
-            console.log('Sync operation created for update:', syncOp);
-        } catch (error) {
-            console.error('Error during product update:', error);
+            console.error('Error creating product:', error);
             throw error;
         }
+    },
 
-        return updatedProduct;
+    async update(id: number, productData: UpdateProductData) {
+        console.log('Starting product update:', { id, updates: productData });
+
+        try {
+            // Primero actualizar en el backend
+            const response = await fetch(`${config.apiUrl}/products/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(productData)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Error updating product');
+            }
+
+            const serverProduct = await response.json();
+
+            // Si el backend acepta, actualizar en IndexedDB
+            const db = await initDatabase();
+            const productToStore = {
+                ...serverProduct,
+                createdAt: new Date(serverProduct.createdAt),
+                updatedAt: new Date(serverProduct.updatedAt)
+            };
+
+            await db.put('products', productToStore);
+            console.log('Product updated successfully:', productToStore);
+
+            return productToStore;
+        } catch (error) {
+            console.error('Error updating product:', error);
+            throw error;
+        }
     },
 
     async delete(id: number) {
-        const db = await initDatabase();
-        const product = await db.get('products', id);
-        if (!product) throw new Error('Product not found');
+        console.log('Starting product deletion:', id);
 
-        await db.delete('products', id);
+        try {
+            // Primero eliminar en el backend
+            const response = await fetch(`${config.apiUrl}/products/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
 
-        // Encolar para sincronización
-        await enqueueSyncOperation({
-            type: 'delete',
-            entity: 'product',
-            data: JSON.stringify({ id }),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
-            status: 'pending'
-        });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Error deleting product');
+            }
+
+            // Si el backend acepta, eliminar de IndexedDB
+            const db = await initDatabase();
+            await db.delete('products', id);
+            console.log('Product deleted successfully');
+
+        } catch (error) {
+            console.error('Error deleting product:', error);
+            throw error;
+        }
     },
 
     async getAll() {
+        const response = await fetch(`${config.apiUrl}/products`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Error fetching products');
+        }
+
+        const products = await response.json();
+
+        // Actualizar IndexedDB con los productos del servidor
         const db = await initDatabase();
-        return db.getAll('products');
+        for (const product of products) {
+            await db.put('products', {
+                ...product,
+                createdAt: new Date(product.createdAt),
+                updatedAt: new Date(product.updatedAt)
+            });
+        }
+
+        return products;
     },
 
     async getById(id: number) {
@@ -228,6 +256,39 @@ export const transactionOperations = {
         return id;
     },
 
+    async cancelTransaction(id: number) {
+        try {
+            const response = await fetch(`${config.apiUrl}/transactions/${id}/cancel`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Error cancelling transaction');
+            }
+
+            const updatedTransaction = await response.json();
+
+            // Si el backend acepta, actualizar en IndexedDB
+            const db = await initDatabase();
+            await db.put('transactions', {
+                ...updatedTransaction,
+                createdAt: new Date(updatedTransaction.createdAt)
+            });
+
+            // Forzar actualización de productos
+            await productOperations.getAll();
+
+            return updatedTransaction;
+        } catch (error) {
+            console.error('Error cancelling transaction:', error);
+            throw error;
+        }
+    },
+
     async getAll() {
         const db = await initDatabase();
         return await db.getAll('transactions');
@@ -243,14 +304,17 @@ export const transactionOperations = {
 export const cashRegisterOperations = {
     async create(register: Omit<CashRegister, 'id'>) {
         const db = await initDatabase();
-        const id = await db.add('cashRegister', register);
+        const data = {
+            ...register,
+            deviceId: localStorage.getItem('deviceId') || 'unknown'
+        };
+        const id = await db.add('cashRegister', data);
 
-        // Encolar para sincronización
         await enqueueSyncOperation({
             type: 'create',
             entity: 'cashRegister',
-            data: JSON.stringify({ ...register, id }),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
+            data: JSON.stringify({ ...data, id }),
+            deviceId: data.deviceId,
             status: 'pending'
         });
 
@@ -259,11 +323,24 @@ export const cashRegisterOperations = {
 
     async update(id: number, data: Partial<CashRegister>) {
         const db = await initDatabase();
+        console.log('Updating register:', id, 'with data:', data);
         const existing = await db.get('cashRegister', id);
+        console.log('Existing register:', existing);
         if (!existing) throw new Error('Register not found');
 
         const updated = { ...existing, ...data };
-        await db.put('cashRegister', updated);
+        console.log('Updated register data:', updated);
+
+        try {
+            await db.put('cashRegister', updated);
+            console.log('Register updated in IndexedDB');
+
+            // Resto del código...
+        } catch (error) {
+            console.error('Error updating register:', error);
+            throw error;
+        }
+
         return updated;
     },
 
@@ -272,10 +349,17 @@ export const cashRegisterOperations = {
         return await db.get('cashRegister', id);
     },
 
-    async getCurrent() {
+    async getCurrent(userId?: string) {
+        console.log('getCurrent called with userId:', userId);
         const db = await initDatabase();
         const registers = await db.getAll('cashRegister');
-        return registers[registers.length - 1];
+        console.log('Found registers:', registers);
+
+        if (!userId) return null;
+
+        const filtered = registers.filter(reg => reg.userId === userId && reg.status === 'open');
+        console.log('Filtered registers:', filtered);
+        return filtered.pop();
     }
 };
 
@@ -318,4 +402,13 @@ export const syncQueueOperations = {
         await tx.store.clear();
         await tx.done;
     }
+};
+
+export const clearDatabase = async () => {
+    const db = await initDatabase();
+    await db.clear('products');
+    await db.clear('transactions');
+    await db.clear('cashRegister');
+    await db.clear('syncQueue');
+    console.log('Local database cleared');
 };

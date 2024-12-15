@@ -30,11 +30,23 @@ const Navigation = () => {
                             <Link
                                 to="/inventory"
                                 className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/inventory')
-                                        ? 'bg-blue-500 text-white'
-                                        : 'text-gray-700 hover:bg-blue-50'
+                                    ? 'bg-blue-500 text-white'
+                                    : 'text-gray-700 hover:bg-blue-50'
                                     }`}
                             >
                                 Inventory
+                            </Link>
+                        )}
+
+                        {user.role === 'admin' && (
+                            <Link
+                                to="/admin/suppliers"
+                                className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/admin/suppliers')
+                                    ? 'bg-blue-500 text-white'
+                                    : 'text-gray-700 hover:bg-blue-50'
+                                    }`}
+                            >
+                                Suppliers
                             </Link>
                         )}
 
@@ -59,6 +71,17 @@ const Navigation = () => {
                                 Users
                             </Link>
                         )}
+
+                        <Link
+                            to="/accounts"
+                            className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/accounts')
+                                ? 'bg-blue-500 text-white'
+                                : 'text-gray-700 hover:bg-blue-50'
+                                }`}
+                        >
+                            Accounts
+                        </Link>
+
                     </div>
 
                     <div className="flex items-center space-x-4">

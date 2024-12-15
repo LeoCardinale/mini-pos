@@ -3,6 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { Product } from '../../types';
 import { productOperations } from '../../lib/database';
 import ProductForm from '../../components/inventory/ProductForm';
+import SearchBar from '../../components/common/SearchBar';
+import { config } from '../../config';
+import { syncClient } from '../../lib/sync/syncClient';
+
 
 const InventoryPage = () => {
     const [products, setProducts] = useState<Product[]>([]);
@@ -11,6 +15,7 @@ const InventoryPage = () => {
     const [showAddForm, setShowAddForm] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         loadProducts();
@@ -53,9 +58,47 @@ const InventoryPage = () => {
         }
     };
 
+    const handleToggleStatus = async (productId: number) => {
+        try {
+            console.log('Frontend: Toggling status for product:', productId);
+            const response = await fetch(`${config.apiUrl}/products/${productId}/toggle-status`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (!response.ok) throw new Error('Failed to toggle status');
+
+            const updatedProduct = await response.json();
+            console.log('Frontend: Updated product data:', updatedProduct);
+
+            // Actualizar el estado local inmediatamente
+            setProducts(prevProducts =>
+                prevProducts.map(product =>
+                    product.id === productId
+                        ? { ...product, isActive: updatedProduct.isActive }
+                        : product
+                )
+            );
+
+            // Forzar sincronización
+            await syncClient.sync();
+        } catch (err) {
+            console.error('Frontend: Error in handleToggleStatus:', err);
+            setError('Error toggling product status');
+        }
+    };
+
     const filteredProducts = selectedCategory
         ? products.filter(p => p.category === selectedCategory)
         : products;
+
+    const searchFilteredProducts = filteredProducts.filter(product => {
+        const searchLower = searchTerm.toLowerCase();
+        return product.name.toLowerCase().includes(searchLower) ||
+            (product.barcode && product.barcode.toLowerCase().includes(searchLower));
+    });
 
     return (
         <div className="p-6">
@@ -75,28 +118,37 @@ const InventoryPage = () => {
                 </div>
             )}
 
-            <div className="mb-4 flex gap-2">
-                <button
-                    onClick={() => setSelectedCategory(null)}
-                    className={`px-4 py-2 rounded-lg ${selectedCategory === null
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-800'
-                        }`}
-                >
-                    All
-                </button>
-                {['Wines', 'Beers', 'Spirits', 'Food', 'Others'].map(category => (
+            <div className="mb-4 flex gap-4">
+                <div className="flex-1">
+                    <SearchBar
+                        value={searchTerm}
+                        onChange={setSearchTerm}
+                        placeholder="Search by name or barcode..."
+                    />
+                </div>
+                <div className="flex gap-2">
                     <button
-                        key={category}
-                        onClick={() => setSelectedCategory(category)}
-                        className={`px-4 py-2 rounded-lg ${selectedCategory === category
+                        onClick={() => setSelectedCategory(null)}
+                        className={`px-4 py-2 rounded-lg ${selectedCategory === null
                             ? 'bg-blue-600 text-white'
                             : 'bg-gray-100 text-gray-800'
                             }`}
                     >
-                        {category}
+                        All
                     </button>
-                ))}
+                    {['Wines', 'Beers', 'Spirits', 'Food', 'Others'].map(category => (
+                        <button
+                            key={category}
+                            onClick={() => setSelectedCategory(category)}
+                            className={`px-4 py-2 rounded-lg ${selectedCategory === category
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-800'
+                                }`}
+                        >
+                            {category}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {isLoading ? (
@@ -122,12 +174,15 @@ const InventoryPage = () => {
                                     Stock
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    Status
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                                     Actions
                                 </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredProducts.map((product) => (
+                            {searchFilteredProducts.map((product) => (
                                 <tr key={product.id}>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {product.imageUrl ? (
@@ -166,6 +221,11 @@ const InventoryPage = () => {
                                             {product.stock}
                                         </span>
                                     </td>
+
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        {product.isActive ? 'Active' : 'Inactive'}
+                                    </td>
+
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                         <button
                                             onClick={() => setEditingProduct(product)}
@@ -173,12 +233,24 @@ const InventoryPage = () => {
                                         >
                                             Edit
                                         </button>
+
                                         <button
                                             onClick={() => handleDelete(product.id)}
                                             className="text-red-600 hover:text-red-900"
                                         >
                                             Delete
                                         </button>
+
+                                        {/*<button
+                                            onClick={() => {
+                                                console.log('Toggle button clicked for product:', product.id);
+                                                handleToggleStatus(product.id);
+                                            }}
+                                            className={`${product.isActive ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'
+                                                }`}
+                                        >
+                                            {product.isActive ? 'Deactivate' : 'Activate'}
+                                        </button>*/}
                                     </td>
                                 </tr>
                             ))}

@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Modelos existentes con algunas mejoras
+
 model SyncOperation {
   id        String   @id @default(uuid())
   timestamp BigInt
@@ -22,47 +22,68 @@ model SyncOperation {
 }
 
 model Product {
-  id          Int       @id @default(autoincrement())
-  name        String
-  price       Float
-  stock       Int
-  category    String?
-  barcode     String?   @unique  // Añadido unique constraint
-  minStock    Int?
-  imageUrl    String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  createdBy   String    // Nuevo: referencia al usuario que lo creó
-  updatedBy   String    // Nuevo: referencia al último usuario que lo modificó
-  creator     User      @relation("ProductCreator", fields: [createdBy], references: [id])
-  updater     User      @relation("ProductUpdater", fields: [updatedBy], references: [id])
-  auditLogs   AuditLog[]
+    id              Int       @id @default(autoincrement())
+    name            String
+    supplier        Supplier? @relation(fields: [supplierId], references: [id])
+    supplierId      Int?
+    cost            Float
+    price           Float
+    stock           Int
+    category        String?
+    barcode         String?   @unique
+    minStock        Int?
+    imageUrl        String?
+    createdAt       DateTime  @default(now())
+    updatedAt       DateTime  @updatedAt
+    createdBy       String    
+    updatedBy       String    
+    creator         User      @relation("ProductCreator", fields: [createdBy], references: [id])
+    updater         User      @relation("ProductUpdater", fields: [updatedBy], references: [id])
+    auditLogs       AuditLog[] 
+    isActive        Boolean   @default(true)
+    // Relaciones
+    transactionItems TransactionItem[]
+    prepaidProducts PrepaidProduct[]
+    accountItems    AccountTransactionItem[]
 }
 
 model Transaction {
-  id           Int      @id @default(autoincrement())
-  amount       Float
-  type         String   // PaymentMethod: 'cash' | 'card' | 'transfer'
-  createdAt    DateTime @default(now())
-  deviceId     String
-  customerName String?
-  userId       String   // Nuevo: referencia al usuario que realizó la transacción
-  user         User     @relation(fields: [userId], references: [id])
+    id            Int               @id @default(autoincrement())
+    amount        Float
+    discount      Float             @default(0)
+    type          String    
+    deviceId      String
+    createdAt     DateTime         @default(now())
+    customerName  String?
+    userId        String    
+    user          User             @relation(fields: [userId], references: [id])
+    status        String           @default("active")
+    items         TransactionItem[]
+}
+
+model TransactionItem {
+    id            Int         @id @default(autoincrement())
+    transactionId Int
+    productId     Int
+    quantity      Int
+    price         Float
+    transaction   Transaction @relation(fields: [transactionId], references: [id])
+    product       Product     @relation(fields: [productId], references: [id])
 }
 
 model CashRegister {
-  id            Int       @id @default(autoincrement())
-  status        String    // 'open' | 'closed'
-  initialAmount Float
-  finalAmount   Float?
-  openedAt      DateTime  @default(now())
-  closedAt      DateTime?
-  deviceId      String
-  userId        String    // Nuevo: referencia al usuario que opera la caja
-  user          User      @relation(fields: [userId], references: [id])
+    id            Int       @id @default(autoincrement())
+    status        String    // 'open' | 'closed'
+    initialAmount Float
+    finalAmount   Float?
+    openedAt      DateTime  @default(now())
+    closedAt      DateTime?
+    deviceId      String    // Este campo debe ser requerido
+    userId        String    
+    user          User      @relation(fields: [userId], references: [id])
 }
 
-// Nuevos modelos para autenticación y auditoría
+
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
@@ -82,6 +103,10 @@ model User {
   productsCreated   Product[]      @relation("ProductCreator")
   productsUpdated   Product[]      @relation("ProductUpdater")
   auditLogs         AuditLog[]
+
+  accountsCreated   Account[]  @relation("AccountCreator")
+  accountsClosed    Account[]  @relation("AccountCloser")
+  accountTransactions AccountTransaction[]
 }
 
 model Role {
@@ -94,14 +119,86 @@ model Role {
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  action    String   // 'create' | 'update' | 'delete'
-  entity    String   // Nombre de la entidad afectada
-  entityId  String   // ID de la entidad afectada
-  changes   String   // JSON con los cambios realizados
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  productId Int?     // Opcional: referencia específica a producto si aplica
-  product   Product? @relation(fields: [productId], references: [id])
-  createdAt DateTime @default(now())
+    id        String   @id @default(uuid())
+    action    String   // 'create' | 'update' | 'delete'
+    entity    String   // Nombre de la entidad afectada
+    entityId  String   // ID de la entidad afectada
+    changes   String   // JSON con los cambios realizados
+    userId    String
+    user      User     @relation(fields: [userId], references: [id])
+    productId Int?     // Opcional: referencia específica a producto si aplica
+    product   Product? @relation(fields: [productId], references: [id])
+    createdAt DateTime @default(now())
+}
+
+model Supplier {
+    id          Int       @id @default(autoincrement())
+    fiscalName  String
+    tradeName   String
+    contact     String?
+    phone       String?
+    email       String?
+    taxId       String?   // RIF/NIF
+    address     String?
+    notes       String?
+    active      Boolean   @default(true)
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    products    Product[]
+}
+
+enum AccountType {
+    PREPAID
+    ACCUMULATED
+}
+
+model Account {
+    id            Int       @id @default(autoincrement())
+    type          AccountType
+    customerName  String
+    status        String    // "open" | "closed"
+    openedAt      DateTime  @default(now())
+    closedAt      DateTime?
+    creditLimit   Float?    // Solo para ACCUMULATED
+    createdBy     String    
+    closedBy      String?   
+    creator       User      @relation("AccountCreator", fields: [createdBy], references: [id])
+    closer        User?     @relation("AccountCloser", fields: [closedBy], references: [id])
+    products      PrepaidProduct[]
+    transactions  AccountTransaction[]
+}
+
+model PrepaidProduct {
+    id          Int      @id @default(autoincrement())
+    accountId   Int
+    productId   Int
+    paid        Int      // cantidad pagada
+    consumed    Int      // cantidad consumida
+    account     Account  @relation(fields: [accountId], references: [id])
+    product     Product  @relation(fields: [productId], references: [id])
+}
+
+model AccountTransaction {
+    id          Int       @id @default(autoincrement())
+    accountId   Int
+    amount      Float
+    type        String    // "debit" | "credit"
+    method      String?   // "cash" | "card" | "transfer"
+    discount    Float     @default(0)
+    note        String?
+    createdAt   DateTime  @default(now())
+    userId      String    
+    user        User      @relation(fields: [userId], references: [id])
+    account     Account   @relation(fields: [accountId], references: [id])
+    items       AccountTransactionItem[]
+}
+
+model AccountTransactionItem {
+    id            Int                @id @default(autoincrement())
+    transactionId Int
+    productId     Int
+    quantity      Int
+    price         Float
+    transaction   AccountTransaction @relation(fields: [transactionId], references: [id])
+    product       Product            @relation(fields: [productId], references: [id])
 }

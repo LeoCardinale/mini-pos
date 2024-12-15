@@ -4,6 +4,9 @@ import { Transaction, CashRegister, PaymentMethod } from '../../types';
 import { cashRegisterOperations, transactionOperations } from '../../lib/database';
 import SalesSummary from '../../components/register/SalesSummary';
 import { saveAs } from 'file-saver';
+import { useAuth } from '../../context/AuthContext';
+import { config } from '../../config';
+
 
 const RegisterControl = () => {
     const [isLoading, setIsLoading] = useState(true);
@@ -12,6 +15,7 @@ const RegisterControl = () => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [initialAmount, setInitialAmount] = useState('');
     const [finalAmount, setFinalAmount] = useState('');
+    const { user } = useAuth();
 
     useEffect(() => {
         checkRegisterStatus();
@@ -20,13 +24,20 @@ const RegisterControl = () => {
     const checkRegisterStatus = async () => {
         try {
             setIsLoading(true);
-            const register = await cashRegisterOperations.getCurrent();
-            setCurrentRegister(register || null);
+            const registers = await cashRegisterOperations.getCurrent(user?.id);
+            console.log('Current register:', registers);
+            setCurrentRegister(registers || null);
 
-            if (register) {
-                // Obtener transacciones del registro actual
+            if (registers) {
                 const registerTransactions = await transactionOperations.getAll();
-                setTransactions(registerTransactions);
+                console.log('All transactions:', registerTransactions);
+                const filteredTransactions = registerTransactions.filter(transaction =>
+                    transaction.userId === user?.id &&
+                    transaction.createdAt >= registers.openedAt &&
+                    (!registers.closedAt || transaction.createdAt <= registers.closedAt)
+                );
+                console.log('Filtered transactions:', filteredTransactions);
+                setTransactions(filteredTransactions);
             } else {
                 setTransactions([]);
             }
@@ -46,10 +57,17 @@ const RegisterControl = () => {
                 return;
             }
 
+            if (!user) {
+                setError('User not authenticated');
+                return;
+            }
+
             const register: Omit<CashRegister, 'id'> = {
                 status: 'open',
                 openedAt: new Date(),
-                initialAmount: amount
+                initialAmount: amount,
+                userId: user.id,
+                deviceId: localStorage.getItem('deviceId') || 'unknown'
             };
 
             await cashRegisterOperations.create(register);
@@ -60,34 +78,75 @@ const RegisterControl = () => {
         }
     };
 
-    const generateReport = async () => {
+    const handleCloseRegister = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!currentRegister) return;
 
-        const totalSales = transactions.reduce((sum, t) => sum + t.amount, 0);
+        try {
+            const amount = parseFloat(finalAmount);
+            if (isNaN(amount) || amount < 0) {
+                setError('Please enter a valid amount');
+                return;
+            }
+
+            console.log('Cerrando caja...', currentRegister.id);
+
+            // Actualizar estado de la caja
+            await cashRegisterOperations.update(currentRegister.id, {
+                status: 'closed',
+                closedAt: new Date(),
+                finalAmount: amount
+            });
+
+            console.log('Caja cerrada, generando reporte...');
+            await generateReport();
+
+            console.log('Limpiando estado...');
+            setFinalAmount('');
+            setTransactions([]);
+            await checkRegisterStatus();
+
+            console.log('Proceso completado');
+        } catch (err) {
+            console.error('Error al cerrar caja:', err);
+            setError('Error closing register');
+        }
+    };
+
+    const generateReport = async () => {
+        if (!currentRegister || !user) return;
+
+        const activeTransactions = transactions.filter(t => t.status === 'active');
+        const totalSales = activeTransactions.reduce((sum, t) => sum + t.amount, 0);
+        const totalDiscounts = activeTransactions.reduce((sum, t) => sum + t.discount, 0);
         const expectedAmount = currentRegister.initialAmount + totalSales;
         const difference = parseFloat(finalAmount) - expectedAmount;
 
         const rows = [
             ['Register Report'],
+            ['User', user.name],
             ['Date', new Date().toLocaleDateString()],
             ['Open Time', currentRegister.openedAt.toLocaleString()],
             ['Close Time', new Date().toLocaleString()],
             ['Initial Amount', `$${currentRegister.initialAmount.toFixed(2)}`],
-            ['Final Amount', `$${finalAmount}`],
             ['Total Sales', `$${totalSales.toFixed(2)}`],
+            ['Total Discounts', `$${totalDiscounts.toFixed(2)}`],  // Nueva línea
+            ['Final Amount', `$${finalAmount}`],
             ['Expected Amount', `$${expectedAmount.toFixed(2)}`],
             ['Difference', `$${difference.toFixed(2)}`],
             [''],
             ['Transaction Details'],
-            ['Time', 'Amount', 'Payment Method', 'Customer']
+            ['Time', 'Amount', 'Discount', 'Payment Method', 'Customer', 'Status']
         ];
 
         transactions.forEach(t => {
             rows.push([
                 t.createdAt.toLocaleString(),
                 `$${t.amount.toFixed(2)}`,
+                `$${t.discount.toFixed(2)}`,
                 t.type,
-                t.customerName || '-'
+                t.customerName || '-',
+                t.status
             ]);
         });
 
@@ -106,28 +165,13 @@ const RegisterControl = () => {
         saveAs(blob, `register-report-${new Date().toISOString().split('T')[0]}.csv`);
     };
 
-    const handleCloseRegister = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!currentRegister) return;
-
+    const handleCancelTransaction = async (transactionId: number) => {
         try {
-            const amount = parseFloat(finalAmount);
-            if (isNaN(amount) || amount < 0) {
-                setError('Please enter a valid amount');
-                return;
-            }
-
-            await generateReport();
-            await cashRegisterOperations.update(currentRegister.id, {
-                status: 'closed',
-                closedAt: new Date(),
-                finalAmount: amount
-            });
-            setFinalAmount('');
-            setTransactions([]);
-            checkRegisterStatus();
+            await transactionOperations.cancelTransaction(transactionId);
+            await checkRegisterStatus();
         } catch (err) {
-            setError('Error closing register');
+            setError('Error cancelling transaction');
+            console.error('Error:', err);
         }
     };
 
@@ -166,6 +210,8 @@ const RegisterControl = () => {
                         <SalesSummary
                             transactions={transactions}
                             initialAmount={currentRegister.initialAmount}
+                            currentRegister={currentRegister}
+                            onCancelTransaction={handleCancelTransaction}
                         />
 
                         <form onSubmit={handleCloseRegister} className="mt-6">

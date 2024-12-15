@@ -1,4 +1,4 @@
-import { syncQueueOperations, initDatabase } from '../database';
+import { syncQueueOperations, initDatabase, clearDatabase } from '../database';
 import { SyncOperation, SyncRequest, SyncResponse } from '../../types/sync';
 import { EventEmitter } from '../utils/EventEmitter';
 import { config } from '../../config';
@@ -23,7 +23,7 @@ class SyncClient extends EventEmitter {
     private intervalId?: number;
     private isOnline: boolean = true;
 
-    constructor(private apiUrl: string = config.apiUrl) {
+    constructor(private apiUrl: string = config.apiUrl.replace('/api', '')) {
         super();
         console.log('SyncClient initialized with URL:', this.apiUrl);
         this.isOnline = navigator.onLine;
@@ -66,9 +66,16 @@ class SyncClient extends EventEmitter {
             }
 
             console.log('Performing initial sync...');
+
+            // Solo limpiar si no hay operaciones pendientes
             const pendingOps = await syncQueueOperations.getPendingOperations();
-            if (pendingOps.length > 0) {
-                return;
+            if (pendingOps.length === 0) {
+                // Solo limpiar si la base de datos está vacía
+                const db = await initDatabase();
+                const products = await db.getAll('products');
+                if (products.length === 0) {
+                    await clearDatabase();
+                }
             }
 
             const response = await fetch(`${this.apiUrl}/sync`, {
@@ -265,4 +272,4 @@ class SyncClient extends EventEmitter {
     }
 }
 
-export const syncClient = new SyncClient();
+export const syncClient = new SyncClient(config.apiUrl);

@@ -7,6 +7,10 @@ import syncRoutes from './routes/syncRoutes';
 import { authenticate } from './middleware/auth';
 import userRoutes from './routes/userRoutes';
 import productRoutes from './routes/productRoutes';
+import supplierRoutes from './routes/supplierRoutes';
+import transactionRoutes from './routes/transactionRoutes';
+import accountRoutes from './routes/accountRoutes';
+
 
 const app = express();
 
@@ -16,8 +20,10 @@ app.use((req, res, next) => {
 });
 
 // Middlewares globales
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
+
+// CORS
 app.use(cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     credentials: true
@@ -32,6 +38,12 @@ app.use('/api/sync', authenticate, syncRoutes);
 app.use('/api/admin/users', authenticate, userRoutes);
 
 app.use('/api/products', productRoutes);
+
+app.use('/api/suppliers', supplierRoutes);
+
+app.use('/api/transactions', transactionRoutes);
+
+app.use('/api/accounts', accountRoutes);
 
 // Manejo de errores global
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

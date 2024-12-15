@@ -113,7 +113,17 @@ class SyncService {
 
     private async applyTransactionOperation(type: string, data: any): Promise<void> {
         if (type === 'create') {
-            await prisma.transaction.create({ data });
+            const { items, ...transactionData } = data;
+            const { id, ...transactionDataWithoutId } = transactionData;
+
+            await prisma.transaction.create({
+                data: {
+                    ...transactionDataWithoutId,
+                    items: {
+                        create: items.map(({ id, transactionId, ...item }: any) => item)
+                    }
+                }
+            });
         }
     }
 

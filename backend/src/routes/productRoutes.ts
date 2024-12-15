@@ -7,6 +7,7 @@ import {
     createProduct,
     updateProduct,
     deleteProduct,
+    toggleProductStatus
 } from '../controllers/productController';
 
 const router = Router();
@@ -16,7 +17,12 @@ router.get('/', authenticate, getProducts);
 
 // Rutas protegidas (solo admin)
 router.post('/', authenticate, requireRole(['admin']), createProduct);
-router.put('/:id', authenticate, requireRole(['admin']), updateProduct);
+router.put('/:id', authenticate, requireRole(['admin', 'user']), updateProduct);
 router.delete('/:id', authenticate, requireRole(['admin']), deleteProduct);
+
+router.patch('/:id/toggle-status', authenticate, requireRole(['admin']), (req, res, next) => {
+    console.log('Route hit: toggle-status');
+    next();
+}, toggleProductStatus);
 
 export default router;

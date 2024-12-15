@@ -4,11 +4,14 @@ import { productOperations, transactionOperations, cashRegisterOperations } from
 import Cart from '../../components/pos/Cart';
 import ProductsGrid from '../../components/pos/ProductsGrid';
 import CheckoutModal from '../../components/pos/CheckoutModal';
+import SearchBar from '../../components/common/SearchBar';
+import { useAuth } from '../../context/AuthContext';
 
 interface CartItem {
     product: Product;
     quantity: number;
 }
+
 
 const CATEGORIES = ['Wines', 'Beers', 'Spirits', 'Food', 'Others'];
 
@@ -19,6 +22,10 @@ const POSPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showCheckout, setShowCheckout] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [discount, setDiscount] = useState(0);
+    const { user } = useAuth();
+
 
     useEffect(() => {
         loadProducts();
@@ -28,13 +35,19 @@ const POSPage = () => {
         try {
             setIsLoading(true);
             const allProducts = await productOperations.getAll();
-            setProducts(allProducts);
+            setProducts(allProducts.filter((p: Product) => p.isActive));
         } catch (err) {
             setError('Error loading products');
         } finally {
             setIsLoading(false);
         }
     };
+
+    const filteredProducts = products.filter(product => {
+        const searchLower = searchTerm.toLowerCase();
+        return product.name.toLowerCase().includes(searchLower) ||
+            (product.barcode && product.barcode.toLowerCase().includes(searchLower));
+    });
 
     const handleProductSelect = (product: Product) => {
         setCartItems(prev => {
@@ -69,28 +82,47 @@ const POSPage = () => {
         setCartItems(prev => prev.filter(item => item.product.id !== productId));
     };
 
-    const handleCheckout = async (paymentMethod: PaymentMethod, customerName: string) => {
+    const handleCheckout = async (paymentMethod: PaymentMethod, customerName: string, discount: number) => {
         try {
-            const currentRegister = await cashRegisterOperations.getCurrent();
+            console.log('User at checkout:', user);
+            const currentRegister = await cashRegisterOperations.getCurrent(user!.id);
+            console.log('Current register at checkout:', currentRegister);
+
             if (!currentRegister) {
+                console.log('No register found for user:', user?.id);
                 alert('Please open the register first');
                 return;
             }
 
-            // Calcular el total
-            const total = cartItems.reduce(
+            // Calcular total con descuento
+            const subtotal = cartItems.reduce(
                 (sum, item) => sum + item.product.price * item.quantity,
                 0
             );
+            const total = Math.max(0, subtotal - discount);
 
-            // Crear transacción simplificada
+            // Crear transacción
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
             const transaction: Omit<Transaction, 'id'> = {
                 amount: total,
+                discount: discount,
                 type: paymentMethod,
-                createdAt: new Date()
+                createdAt: new Date(),
+                userId: user.id,
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                customerName: customerName || undefined,
+                status: 'active',
+                items: cartItems.map(item => ({
+                    id: 0,
+                    transactionId: 0,
+                    productId: item.product.id,
+                    quantity: item.quantity,
+                    price: item.product.price
+                }))
             };
 
-            // Guardar transacción
             await transactionOperations.create(transaction);
 
             // Actualizar stock
@@ -100,7 +132,6 @@ const POSPage = () => {
                 });
             }
 
-            // Resetear carrito y recargar productos
             setCartItems([]);
             loadProducts();
             setShowCheckout(false);
@@ -116,33 +147,42 @@ const POSPage = () => {
     return (
         <div className="h-[calc(100vh-4rem)] flex gap-4">
             <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="mb-4 flex gap-2 overflow-x-auto py-2">
-                    <button
-                        onClick={() => setSelectedCategory(null)}
-                        className={`px-4 py-2 rounded-lg whitespace-nowrap ${selectedCategory === null
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-800'
-                            }`}
-                    >
-                        All
-                    </button>
-                    {CATEGORIES.map(category => (
+                <div className="mb-4 flex gap-2">
+                    <div className="flex-1">
+                        <SearchBar
+                            value={searchTerm}
+                            onChange={setSearchTerm}
+                            placeholder="Search by name or barcode..."
+                        />
+                    </div>
+                    <div className="flex space-x-2 overflow-x-auto py-2">
                         <button
-                            key={category}
-                            onClick={() => setSelectedCategory(category)}
-                            className={`px-4 py-2 rounded-lg whitespace-nowrap ${selectedCategory === category
+                            onClick={() => setSelectedCategory(null)}
+                            className={`px-4 py-2 rounded-lg whitespace-nowrap ${selectedCategory === null
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-800'
                                 }`}
                         >
-                            {category}
+                            All
                         </button>
-                    ))}
+                        {CATEGORIES.map(category => (
+                            <button
+                                key={category}
+                                onClick={() => setSelectedCategory(category)}
+                                className={`px-4 py-2 rounded-lg whitespace-nowrap ${selectedCategory === category
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-100 text-gray-800'
+                                    }`}
+                            >
+                                {category}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-auto pb-4">
                     <ProductsGrid
-                        products={products}
+                        products={filteredProducts}
                         onProductSelect={handleProductSelect}
                         selectedCategory={selectedCategory}
                     />
@@ -156,6 +196,8 @@ const POSPage = () => {
                     onRemoveItem={handleRemoveItem}
                     onCheckout={() => setShowCheckout(true)}
                     onClearCart={() => setCartItems([])}
+                    discount={discount}
+                    onDiscountChange={setDiscount}
                 />
             </div>
 
@@ -165,8 +207,9 @@ const POSPage = () => {
                         (sum, item) => sum + item.product.price * item.quantity,
                         0
                     )}
+                    discount={discount}  // Nuevo prop
                     onComplete={(paymentMethod, customerName) =>
-                        handleCheckout(paymentMethod, customerName)
+                        handleCheckout(paymentMethod, customerName, discount)
                     }
                     onCancel={() => setShowCheckout(false)}
                 />
