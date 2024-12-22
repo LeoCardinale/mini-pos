@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Transaction, PaymentMethod } from '../../types';
-import { productOperations, transactionOperations, cashRegisterOperations } from '../../lib/database';
+import {
+    productOperations,
+    transactionOperations,
+    cashRegisterOperations,
+    syncQueueOperations
+} from '../../lib/database';
 import Cart from '../../components/pos/Cart';
 import ProductsGrid from '../../components/pos/ProductsGrid';
 import CheckoutModal from '../../components/pos/CheckoutModal';
@@ -123,12 +128,34 @@ const POSPage = () => {
                 }))
             };
 
-            await transactionOperations.create(transaction);
+            const transactionId = await transactionOperations.create(transaction);
 
             // Actualizar stock
             for (const item of cartItems) {
                 await productOperations.update(item.product.id, {
                     stock: item.product.stock - item.quantity
+                });
+            }
+
+            for (const item of cartItems) {
+                const saleRecord = {
+                    productId: item.product.id,
+                    quantity: item.quantity,
+                    price: item.product.price,
+                    total: item.quantity * item.product.price,
+                    source: 'POS',
+                    sourceId: transactionId.toString(),
+                    userId: user.id,
+                    createdAt: new Date()
+                };
+
+                // Encolar operación de sincronización
+                await syncQueueOperations.addOperation({
+                    type: 'create',
+                    entity: 'salesRecord',
+                    data: JSON.stringify(saleRecord),
+                    deviceId: localStorage.getItem('deviceId') || 'unknown',
+                    status: 'pending'
                 });
             }
 
@@ -203,14 +230,16 @@ const POSPage = () => {
 
             {showCheckout && (
                 <CheckoutModal
-                    total={cartItems.reduce(
+                    subtotal={cartItems.reduce(
                         (sum, item) => sum + item.product.price * item.quantity,
                         0
                     )}
-                    discount={discount}  // Nuevo prop
-                    onComplete={(paymentMethod, customerName) =>
-                        handleCheckout(paymentMethod, customerName, discount)
-                    }
+                    total={Math.max(0, cartItems.reduce(
+                        (sum, item) => sum + item.product.price * item.quantity,
+                        0
+                    ) - discount)}
+                    discount={discount}
+                    onComplete={handleCheckout}
                     onCancel={() => setShowCheckout(false)}
                 />
             )}

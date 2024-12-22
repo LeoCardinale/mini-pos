@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AccountType } from '../../types';
+import { useTranslation } from 'react-i18next';
 
 interface AccountFormProps {
     onSubmit: (data: AccountFormData) => Promise<void>;
@@ -21,6 +22,7 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel }) => {
     const [showCreditLimit, setShowCreditLimit] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const { t } = useTranslation();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -29,12 +31,12 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel }) => {
 
         try {
             if (!formData.customerName.trim()) {
-                throw new Error('Customer name is required');
+                throw new Error(t('validation.required', { field: t('accounts.customerName') }));
             }
 
             await onSubmit(formData);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Error creating account');
+            setError(err instanceof Error ? err.message : t('errors.saving', { item: t('accounts.account') }));
         } finally {
             setIsLoading(false);
         }
@@ -44,7 +46,7 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Customer Name
+                    {t('accounts.customerName')}
                 </label>
                 <input
                     type="text"
@@ -60,7 +62,7 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel }) => {
 
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Account Type
+                    {t('accounts.accountType')}
                 </label>
                 <select
                     value={formData.type}
@@ -74,8 +76,8 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel }) => {
                     }}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
-                    <option value={AccountType.ACCUMULATED}>Accumulated</option>
-                    <option value={AccountType.PREPAID}>Prepaid</option>
+                    <option value={AccountType.ACCUMULATED}>{t('accounts.accumulated')}</option>
+                    <option value={AccountType.PREPAID}>{t('accounts.prepaid')}</option>
                 </select>
             </div>
 
@@ -95,14 +97,14 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel }) => {
                             className="h-4 w-4 text-blue-600 rounded border-gray-300"
                         />
                         <label htmlFor="useCreditLimit" className="ml-2 text-sm text-gray-700">
-                            Set Credit Limit
+                            {t('accounts.setCreditLimit')}
                         </label>
                     </div>
 
                     {showCreditLimit && (
                         <div>
                             <label className="block text-sm font-medium text-gray-700">
-                                Credit Limit
+                                {t('accounts.creditLimit')}
                             </label>
                             <input
                                 type="number"
@@ -130,14 +132,14 @@ const AccountForm: React.FC<AccountFormProps> = ({ onSubmit, onCancel }) => {
                     disabled={isLoading}
                     className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                    {isLoading ? 'Creating...' : 'Create Account'}
+                    {isLoading ? t('common.creating') : t('accounts.createAccount')}
                 </button>
                 <button
                     type="button"
                     onClick={onCancel}
                     className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200"
                 >
-                    Cancel
+                    {t('common.cancel')}
                 </button>
             </div>
         </form>

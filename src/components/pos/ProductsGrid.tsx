@@ -1,6 +1,7 @@
 // src/components/pos/ProductsGrid.tsx
 import React from 'react';
 import { Product } from '../../types';
+import { useTranslation } from 'react-i18next';
 
 interface ProductsGridProps {
     products: Product[];
@@ -16,6 +17,8 @@ const ProductsGrid: React.FC<ProductsGridProps> = ({
     const filteredProducts = selectedCategory
         ? products.filter(p => p.category === selectedCategory)
         : products;
+
+    const { t } = useTranslation();
 
     return (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -41,7 +44,7 @@ const ProductsGrid: React.FC<ProductsGridProps> = ({
                             />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                No image
+                                {t('inventory.noImage')}
                             </div>
                         )}
                     </div>
@@ -54,7 +57,7 @@ const ProductsGrid: React.FC<ProductsGridProps> = ({
                             ${product.price.toFixed(2)}
                         </p>
                         <p className="text-sm text-gray-500">
-                            Stock: {product.stock}
+                            {t('common.stock')}: {product.stock}
                         </p>
                     </div>
                 </button>

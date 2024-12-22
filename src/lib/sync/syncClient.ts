@@ -114,6 +114,7 @@ class SyncClient extends EventEmitter {
     }
 
     async sync(): Promise<void> {
+        console.log('Starting sync process');
         const token = this.getAuthToken();
         if (!token || !this.isOnline) {
             console.log('Skipping sync - no token or offline');
@@ -123,6 +124,7 @@ class SyncClient extends EventEmitter {
         this.emit('syncStart');
         try {
             const pendingOperations = await syncQueueOperations.getPendingOperations();
+            console.log('Pending operations:', pendingOperations);
 
             const syncRequest: SyncRequest = {
                 operations: pendingOperations,

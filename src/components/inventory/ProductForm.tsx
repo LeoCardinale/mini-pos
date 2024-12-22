@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Product } from '../../types';
 import { productOperations } from '../../lib/database';
 import { config } from '../../config';
+import { t } from 'i18next';
 
 
 type ProductFormData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
@@ -233,7 +234,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
                 // Verificar nombre duplicado
                 const duplicateName = allProducts.find(
-                    p => p.name.toLowerCase() === productData.name.toLowerCase()
+                    (p: Product) => p.name.toLowerCase() === productData.name.toLowerCase()
                 );
                 if (duplicateName) {
                     throw new Error('A product with this name already exists');
@@ -242,7 +243,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 // Verificar código de barras duplicado
                 if (productData.barcode) {
                     const duplicateBarcode = allProducts.find(
-                        p => p.barcode === productData.barcode
+                        (p: Product) => p.barcode === productData.barcode
                     );
                     if (duplicateBarcode) {
                         throw new Error('A product with this barcode already exists');
@@ -263,7 +264,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-                <label className="block text-sm font-medium text-gray-700">Name</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common.name')}</label>
                 <input
                     type="text"
                     name="name"
@@ -276,7 +277,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Barcode</label>
+                <label className="block text-sm font-medium text-gray-700">{t('inventory.barcode')}</label>
                 <input
                     type="text"
                     name="barcode"
@@ -287,7 +288,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Category</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common.category')}</label>
                 <select
                     name="category"
                     value={formData.category}
@@ -301,14 +302,14 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Supplier</label>
+                <label className="block text-sm font-medium text-gray-700">{t('inventory.supplier')}</label>
                 <select
                     name="supplierId"
                     value={formData.supplierId || ''}
                     onChange={handleChange}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
-                    <option value="">Select a supplier</option>
+                    <option value="">{t('inventory.selectSupplier')}</option>
                     {suppliers.map(supplier => (
                         <option key={supplier.id} value={supplier.id}>
                             {supplier.tradeName}
@@ -318,7 +319,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Cost</label>
+                <label className="block text-sm font-medium text-gray-700">{t('inventory.costPrice')}</label>
                 <input
                     type="number"
                     name="cost"
@@ -332,7 +333,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Price</label>
+                <label className="block text-sm font-medium text-gray-700">{t('inventory.sellingPrice')}</label>
                 <input
                     type="number"
                     name="price"
@@ -346,7 +347,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Stock</label>
+                <label className="block text-sm font-medium text-gray-700">{t('common.stock')}</label>
                 <input
                     type="number"
                     name="stock"
@@ -360,7 +361,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Minimum Stock Alert
+                    {t('inventory.minStock')}
                 </label>
                 <input
                     type="number"
@@ -381,12 +382,12 @@ const ProductForm: React.FC<ProductFormProps> = ({
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
                 <label className="ml-2 block text-sm text-gray-700">
-                    Active
+                    {t('common.active')}
                 </label>
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-gray-700">Image</label>
+                <label className="block text-sm font-medium text-gray-700">{t('inventory.image')}</label>
                 <div className="mt-1 flex items-center gap-4">
                     <div className="flex-1">
                         <input
@@ -401,14 +402,14 @@ const ProductForm: React.FC<ProductFormProps> = ({
                         onClick={handleCameraClick}
                         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                     >
-                        Take Photo
+                        {t('inventory.takePhoto')}
                     </button>
                 </div>
                 {showCamera && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                         <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
                             <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-bold">Take Photo</h2>
+                                <h2 className="text-xl font-bold">{t('inventory.takePhoto')}</h2>
                                 <button
                                     type="button"
                                     onClick={() => setShowCamera(false)}
@@ -447,7 +448,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                                     onClick={() => setShowCamera(false)}
                                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
                                 >
-                                    Cancel
+                                    {t('common.cancel')}
                                 </button>
                             </div>
                         </div>
@@ -472,14 +473,14 @@ const ProductForm: React.FC<ProductFormProps> = ({
                     disabled={isLoading}
                     className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                    {isLoading ? 'Saving...' : initialProduct ? 'Update' : 'Add Product'}
+                    {isLoading ? t('common.saving') : initialProduct ? t('common.update') : t('inventory.addProduct')}
                 </button>
                 <button
                     type="button"
                     onClick={onCancel}
                     className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200"
                 >
-                    Cancel
+                    {t('common.cancel')}
                 </button>
             </div>
         </form>

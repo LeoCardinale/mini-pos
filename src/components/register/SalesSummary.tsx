@@ -1,5 +1,6 @@
 import React from 'react';
 import { Transaction, PaymentMethod, CashRegister } from '../../types';
+import { useTranslation } from 'react-i18next';
 
 interface SalesSummaryProps {
     transactions: Transaction[];
@@ -22,30 +23,31 @@ const SalesSummary: React.FC<SalesSummaryProps> = ({
         ...acc,
         [t.type]: (acc[t.type] || 0) + t.amount
     }), {} as Record<PaymentMethod, number>);
+    const { t } = useTranslation();
 
     return (
         <div className="bg-white rounded-lg shadow p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-blue-50 p-4 rounded-lg">
-                    <h3 className="text-sm font-medium text-blue-800">Initial Amount</h3>
+                    <h3 className="text-sm font-medium text-blue-800">{t('register.initialAmount')}</h3>
                     <p className="text-2xl font-bold text-blue-900">
                         ${initialAmount.toFixed(2)}
                     </p>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
-                    <h3 className="text-sm font-medium text-green-800">Total Sales</h3>
+                    <h3 className="text-sm font-medium text-green-800">{t('register.totalSales')}</h3>
                     <p className="text-2xl font-bold text-green-900">
                         ${totalSales.toFixed(2)}
                     </p>
                 </div>
                 <div className="bg-red-50 p-4 rounded-lg">
-                    <h3 className="text-sm font-medium text-red-800">Total Discounts</h3>
+                    <h3 className="text-sm font-medium text-red-800">{t('register.totalDiscounts')}</h3>
                     <p className="text-2xl font-bold text-red-900">
                         ${totalDiscounts.toFixed(2)}
                     </p>
                 </div>
                 <div className="bg-purple-50 p-4 rounded-lg">
-                    <h3 className="text-sm font-medium text-purple-800">Expected in Register</h3>
+                    <h3 className="text-sm font-medium text-purple-800">{t('register.expectedAmount')}</h3>
                     <p className="text-2xl font-bold text-purple-900">
                         ${(initialAmount + totalSales).toFixed(2)}
                     </p>
@@ -53,7 +55,7 @@ const SalesSummary: React.FC<SalesSummaryProps> = ({
             </div>
 
             <div>
-                <h3 className="text-lg font-medium mb-3">Sales by Payment Method</h3>
+                <h3 className="text-lg font-medium mb-3">{t('register.byPaymentMethod')}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {(['cash', 'card', 'transfer'] as PaymentMethod[]).map(method => (
                         <div key={method} className="bg-gray-50 p-4 rounded-lg">
@@ -69,31 +71,31 @@ const SalesSummary: React.FC<SalesSummaryProps> = ({
             </div>
 
             <div>
-                <h3 className="text-lg font-medium mb-3">Recent Transactions</h3>
+                <h3 className="text-lg font-medium mb-3">{t('register.recentTransactions')}</h3>
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Time
+                                    {t('common.time')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Amount
+                                    {t('common.amount')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Discount
+                                    {t('common.discount')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Payment
+                                    {t('common.payment')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Customer
+                                    {t('common.customer')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Status
+                                    {t('common.status')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Actions
+                                    {t('common.actions')}
                                 </th>
                             </tr>
                         </thead>
@@ -119,22 +121,22 @@ const SalesSummary: React.FC<SalesSummaryProps> = ({
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                         {transaction.status === 'active' ? (
-                                            <span className="text-green-600">Active</span>
+                                            <span className="text-green-600">{t('common.active')}</span>
                                         ) : (
-                                            <span className="text-red-600">Cancelled</span>
+                                            <span className="text-red-600">{t('common.cancelled')}</span>
                                         )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                         {transaction.status === 'active' && currentRegister.status === 'open' && (
                                             <button
                                                 onClick={() => {
-                                                    if (window.confirm('Are you sure you want to cancel this transaction?')) {
+                                                    if (window.confirm(t('confirmations.cancelTransaction'))) {
                                                         onCancelTransaction(transaction.id);
                                                     }
                                                 }}
                                                 className="text-red-600 hover:text-red-900"
                                             >
-                                                Cancel
+                                                {t('common.cancel')}
                                             </button>
                                         )}
                                     </td>

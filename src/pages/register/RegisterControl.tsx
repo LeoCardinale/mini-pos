@@ -5,7 +5,7 @@ import { cashRegisterOperations, transactionOperations } from '../../lib/databas
 import SalesSummary from '../../components/register/SalesSummary';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
-import { config } from '../../config';
+import { useTranslation } from 'react-i18next';
 
 
 const RegisterControl = () => {
@@ -16,6 +16,7 @@ const RegisterControl = () => {
     const [initialAmount, setInitialAmount] = useState('');
     const [finalAmount, setFinalAmount] = useState('');
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     useEffect(() => {
         checkRegisterStatus();
@@ -53,7 +54,7 @@ const RegisterControl = () => {
         try {
             const amount = parseFloat(initialAmount);
             if (isNaN(amount) || amount < 0) {
-                setError('Please enter a valid amount');
+                setError(t('validation.invalidAmount'));
                 return;
             }
 
@@ -85,7 +86,7 @@ const RegisterControl = () => {
         try {
             const amount = parseFloat(finalAmount);
             if (isNaN(amount) || amount < 0) {
-                setError('Please enter a valid amount');
+                setError(t('validation.invalidAmount'));
                 return;
             }
 
@@ -123,25 +124,25 @@ const RegisterControl = () => {
         const difference = parseFloat(finalAmount) - expectedAmount;
 
         const rows = [
-            ['Register Report'],
-            ['User', user.name],
-            ['Date', new Date().toLocaleDateString()],
-            ['Open Time', currentRegister.openedAt.toLocaleString()],
-            ['Close Time', new Date().toLocaleString()],
-            ['Initial Amount', `$${currentRegister.initialAmount.toFixed(2)}`],
-            ['Total Sales', `$${totalSales.toFixed(2)}`],
-            ['Total Discounts', `$${totalDiscounts.toFixed(2)}`],  // Nueva línea
-            ['Final Amount', `$${finalAmount}`],
-            ['Expected Amount', `$${expectedAmount.toFixed(2)}`],
-            ['Difference', `$${difference.toFixed(2)}`],
+            ['Reporte de Caja'],
+            ['Usuario', user.name],
+            ['Fecha', new Date().toLocaleDateString()],
+            ['Hora de Apertura', currentRegister.openedAt.toLocaleString()],
+            ['Hora de Cierre', new Date().toLocaleString()],
+            ['Monto Inicial', `$${currentRegister.initialAmount.toFixed(2)}`],
+            ['Ventas Totales', `$${totalSales.toFixed(2)}`],
+            ['Descuentos Totales', `$${totalDiscounts.toFixed(2)}`],
+            ['Monto Final', `$${finalAmount}`],
+            ['Monto Esperado', `$${expectedAmount.toFixed(2)}`],
+            ['Diferencia', `$${difference.toFixed(2)}`],
             [''],
-            ['Transaction Details'],
-            ['Time', 'Amount', 'Discount', 'Payment Method', 'Customer', 'Status']
+            ['Detalles de Transacciones'],
+            ['Hora', 'Monto', 'Descuento', 'Forma de Pago', 'Cliente', 'Estado']
         ];
 
         transactions.forEach(t => {
             rows.push([
-                t.createdAt.toLocaleString(),
+                `"${t.createdAt.toLocaleString()}"`,
                 `$${t.amount.toFixed(2)}`,
                 `$${t.discount.toFixed(2)}`,
                 t.type,
@@ -179,7 +180,7 @@ const RegisterControl = () => {
 
     return (
         <div className="max-w-7xl mx-auto space-y-6">
-            <h1 className="text-2xl font-bold">Register Control</h1>
+            <h1 className="text-2xl font-bold">{t('register.title')}</h1>
 
             {error && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-md">
@@ -192,9 +193,9 @@ const RegisterControl = () => {
                     <div className="bg-white p-6 rounded-lg shadow">
                         <div className="flex items-center justify-between mb-6">
                             <div>
-                                <h2 className="text-lg font-medium">Current Register Session</h2>
+                                <h2 className="text-lg font-medium">{t('register.currentSession')}</h2>
                                 <p className="text-sm text-gray-500">
-                                    Opened: {currentRegister.openedAt.toLocaleString()}
+                                    {t('register.opened')}: {currentRegister.openedAt.toLocaleString()}
                                 </p>
                             </div>
                             <div>
@@ -202,7 +203,7 @@ const RegisterControl = () => {
                                     onClick={() => generateReport()}
                                     className="mr-4 text-blue-600 hover:text-blue-800"
                                 >
-                                    Download Report
+                                    {t('register.downloadReport')}
                                 </button>
                             </div>
                         </div>
@@ -217,7 +218,7 @@ const RegisterControl = () => {
                         <form onSubmit={handleCloseRegister} className="mt-6">
                             <div className="max-w-xs">
                                 <label className="block text-sm font-medium text-gray-700">
-                                    Final Amount in Register
+                                    {t('register.finalAmount')}
                                 </label>
                                 <input
                                     type="number"
@@ -233,7 +234,7 @@ const RegisterControl = () => {
                                 type="submit"
                                 className="mt-4 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
                             >
-                                Close Register
+                                {t('register.closeRegister')}
                             </button>
                         </form>
                     </div>
@@ -243,7 +244,7 @@ const RegisterControl = () => {
                     <h2 className="text-lg font-medium mb-4">Open Register</h2>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">
-                            Initial Amount in Register
+                            {t('register.initialAmount')}
                         </label>
                         <input
                             type="number"
@@ -259,7 +260,7 @@ const RegisterControl = () => {
                         type="submit"
                         className="mt-4 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
                     >
-                        Open Register
+                        {t('register.openRegister')}
                     </button>
                 </form>
             )}

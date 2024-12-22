@@ -6,6 +6,9 @@ import { config } from '../../config';
 import { PaymentMethod } from '../../types';
 import CheckoutModal from '../pos/CheckoutModal';
 import SearchBar from '../common/SearchBar';
+import { accountOperations, initDatabase } from '../../lib/database';
+import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 
 interface PrepaidProductSelectorProps {
@@ -24,58 +27,45 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const { user } = useAuth();
+    const { t } = useTranslation();
 
 
     useEffect(() => {
+        const loadProducts = async () => {
+            try {
+                setIsLoading(true);
+                const db = await initDatabase();
+                const tx = db.transaction('products', 'readonly');
+                const products = await tx.store.getAll();
+
+                // Filtrar solo productos activos
+                setProducts(products.filter((p: Product) => p.isActive));
+            } catch (error) {
+                setError('Error loading products');
+            } finally {
+                setIsLoading(false);
+            }
+        };
         loadProducts();
     }, []);
 
-    const loadProducts = async () => {
-        try {
-            const response = await fetch(`${config.apiUrl}/products`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                setProducts(data);
-            }
-        } catch (error) {
-            setError('Error loading products');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     const handleCheckout = async (paymentMethod: PaymentMethod, customerName: string, discount: number) => {
         try {
-            const products = cartItems.map(item => ({
-                productId: item.product.id,
-                quantity: item.quantity
-            }));
-
-            const response = await fetch(`${config.apiUrl}/accounts/${accountId}/prepaid-products`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({
-                    products,
-                    paymentMethod,
-                    discount,
-                    note: customerName // Usaremos el campo customerName como nota
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to add products');
+            if (!user) {
+                throw new Error('User not authenticated');
             }
 
+            const products = cartItems.map(item => ({
+                productId: item.product.id,
+                quantity: item.quantity,
+                price: item.product.price
+            }));
+
+            await accountOperations.addItems(accountId, products, user.id, 'PREPAID', 'credit');
             onSuccess();
         } catch (error) {
-            setError('Error adding products to account');
+            setError(t('errors.addingProducts'));
         }
     };
 
@@ -93,7 +83,7 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
         });
     };
 
-    if (isLoading) return <div>Loading...</div>;
+    if (isLoading) return <div>{t('common.loading')}</div>;
     if (error) return <div className="text-red-600">{error}</div>;
 
     return (
@@ -105,14 +95,14 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
                         onClick={onCancel}
                         className="text-gray-600 hover:text-gray-800 flex items-center gap-2"
                     >
-                        <span>←</span> Back
+                        <span>←</span> {t('common.back')}
                     </button>
                 </div>
                 <div className="mb-4">
                     <SearchBar
                         value={searchTerm}
                         onChange={setSearchTerm}
-                        placeholder="Search by name or barcode..."
+                        placeholder={t('inventory.searchPlaceholder')}
                     />
                 </div>
 
@@ -124,9 +114,9 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
                             : 'bg-gray-100 text-gray-800'
                             }`}
                     >
-                        All
+                        {t('common.all')}
                     </button>
-                    {['Wines', 'Beers', 'Spirits', 'Food', 'Others'].map(category => (
+                    {[t('inventory.catBeers'), t('inventory.catFood'), t('inventory.catSpirits'), t('inventory.catWines'), t('inventory.catOthers')].map(category => (
                         <button
                             key={category}
                             onClick={() => setSelectedCategory(category)}
@@ -179,6 +169,10 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
                 {showCheckoutModal && (
                     <CheckoutModal
                         total={cartItems.reduce(
+                            (sum, item) => sum + item.product.price * item.quantity,
+                            0
+                        )}
+                        subtotal={cartItems.reduce(
                             (sum, item) => sum + item.product.price * item.quantity,
                             0
                         )}

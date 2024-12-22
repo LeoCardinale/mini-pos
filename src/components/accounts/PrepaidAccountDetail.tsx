@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Account, PrepaidProduct } from '../../types';
-import { config } from '../../config';
+import { Account, PrepaidProduct, AccountTransaction, AccountTransactionItem } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import PrepaidProductSelector from './PrepaidProductSelector';
+import CloseAccountConfirm from './CloseAccountConfirm';
+import { initDatabase, accountOperations } from '../../lib/database';
+import { useTranslation } from 'react-i18next';
 
 interface PrepaidAccountDetailProps {
     account: Account;
@@ -9,35 +12,72 @@ interface PrepaidAccountDetailProps {
 }
 
 const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, onUpdate }) => {
+    const { user } = useAuth();
     const [products, setProducts] = useState<PrepaidProduct[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showProductSelector, setShowProductSelector] = useState(false);
+    const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+    const { t } = useTranslation();
+
+    // Mantenemos este cálculo igual
     const totalPaid = products.reduce((sum, p) => {
         const price = p.product?.price ?? 0;
         return sum + (p.paid * price);
     }, 0);
 
-
-
     useEffect(() => {
-        loadPrepaidProducts();
+        loadTransactions();
     }, [account.id]);
 
-    const loadPrepaidProducts = async () => {
+    const loadTransactions = async () => {
         try {
-            const response = await fetch(`${config.apiUrl}/accounts/${account.id}/prepaid-products`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+            const db = await initDatabase();
+            const tx = db.transaction(['accountTransactions', 'products'], 'readonly');
+            const index = tx.objectStore('accountTransactions').index('by-account');
+            const productsStore = tx.objectStore('products');
+
+            const transactions = await index.getAll(account.id);
+
+            // Filtramos solo las transacciones de tipo PREPAID
+            const prepaidTransactions = transactions.filter(t => t.accountType === 'PREPAID');
+
+            // Procesamos las transacciones para construir el estado de productos prepago
+            const productMap = new Map<number, PrepaidProduct>();
+
+            for (const transaction of prepaidTransactions) {
+                if (transaction.items) {
+                    for (const item of transaction.items) {
+                        const product = await productsStore.get(item.productId);
+
+                        if (!productMap.has(item.productId)) {
+                            productMap.set(item.productId, {
+                                id: Date.now(),
+                                accountId: account.id,
+                                productId: item.productId,
+                                paid: 0,
+                                consumed: 0,
+                                product
+                            });
+                        }
+
+                        const prepaidProduct = productMap.get(item.productId)!;
+                        if (transaction.type === 'credit') {
+                            prepaidProduct.paid += item.quantity;
+                        } else if (transaction.type === 'debit') {
+                            prepaidProduct.consumed += item.quantity;
+                        }
+                    }
                 }
-            });
+            }
 
-            if (!response.ok) throw new Error('Failed to load products');
+            // Convertir el Map a array y ordenar por nombre del producto
+            const sortedProducts = Array.from(productMap.values())
+                .sort((a, b) => (a.product?.name || '').localeCompare(b.product?.name || ''));
 
-            const data = await response.json();
-            setProducts(data);
+            setProducts(sortedProducts);
         } catch (err) {
-            setError('Error loading prepaid products');
+            setError(t('errors.loadingTransactions'));
         } finally {
             setIsLoading(false);
         }
@@ -45,39 +85,37 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
 
     const handleConsume = async (productId: number, quantity: number) => {
         try {
-            const response = await fetch(`${config.apiUrl}/accounts/${account.id}/consume`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({ productId, quantity })
-            });
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
 
-            if (!response.ok) throw new Error('Failed to consume product');
+            await accountOperations.addItems(account.id, [{
+                productId,
+                quantity,
+                price: 0 // El precio es 0 porque es un consumo
+            }], user.id, 'PREPAID', 'debit'); // Especificamos que es una transacción de débito
 
-            await loadPrepaidProducts();
+            await loadTransactions();
             onUpdate();
         } catch (err) {
-            setError('Error consuming product');
+            setError(t('errors.consuming'));
         }
     };
 
-    const handleCloseAccount = async () => {
-        try {
-            const response = await fetch(`${config.apiUrl}/accounts/${account.id}/close`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
+    const handleCloseAccount = () => {
+        setShowCloseConfirm(true);
+    };
 
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Failed to close account');
+    const confirmClose = async () => {
+        try {
+            if (!user) {
+                throw new Error('User not authenticated');
             }
 
+            // Encolamos la operación de cierre de cuenta
+            await accountOperations.closeAccount(account.id, user.id, 'PREPAID');
             await onUpdate();
+            setShowCloseConfirm(false);
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Error closing account');
         }
@@ -89,8 +127,8 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
         <div>
             <div className="mb-6">
                 <h2 className="text-2xl font-bold">{account.customerName}</h2>
-                <p className="text-gray-600">Prepaid Account</p>
-                <p className="text-sm text-gray-500">Opened: {account.openedAt.toLocaleString()}</p>
+                <p className="text-gray-600">{t('accounts.prepaid')}</p>
+                <p className="text-sm text-gray-500">{t('accounts.openedAt')}: {account.openedAt.toLocaleString()}</p>
                 <span className={`inline-block px-2 py-1 rounded-full text-sm ${account.status === 'open' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                     }`}>
                     {account.status}
@@ -98,7 +136,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
             </div>
 
             <div className="mb-4 text-lg">
-                <span className="font-medium">Total Paid:</span>
+                <span className="font-medium">{t('accounts.totalPaid')}:</span>
                 <span className="ml-2">${totalPaid.toFixed(2)}</span>
             </div>
 
@@ -108,7 +146,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
                         onClick={() => setShowProductSelector(true)}
                         className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
                     >
-                        Add Products
+                        {t('accounts.addItems')}
                     </button>
                 )}
                 {account.status === 'open' && !products.some(p => p.paid > p.consumed) && (
@@ -116,20 +154,28 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
                         onClick={handleCloseAccount}
                         className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
                     >
-                        Close Account
+                        {t('accounts.closeAccount')}
                     </button>
                 )}
             </div>
+
+            {showCloseConfirm && (
+                <CloseAccountConfirm
+                    account={account}
+                    onConfirm={confirmClose}
+                    onCancel={() => setShowCloseConfirm(false)}
+                />
+            )}
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Consumed</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Available</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.product')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('accounts.paid')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('accounts.consumed')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('accounts.available')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.actions')}</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -158,7 +204,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
                                                 onClick={() => handleConsume(product.productId, 1)}
                                                 className="text-green-600 hover:text-green-900"
                                             >
-                                                Consume
+                                                {t('accounts.consume')}
                                             </button>
                                         )}
                                     </td>
@@ -176,7 +222,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
                             accountId={account.id}
                             onSuccess={() => {
                                 setShowProductSelector(false);
-                                loadPrepaidProducts();
+                                loadTransactions();
                             }}
                             onCancel={() => setShowProductSelector(false)}
                         />

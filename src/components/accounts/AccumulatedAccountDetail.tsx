@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Account, AccountTransaction, Product } from '../../types';
+import { Account, AccountTransaction, Product, AccountTransactionItem } from '../../types';
 import { config } from '../../config';
 import AccountItemsSelector from './AccountItemsSelector';
+import CloseAccountConfirm from './CloseAccountConfirm';
+import { accountOperations } from '../../lib/database';
+import { initDatabase } from '../../lib/database';
+import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 type PaymentMethod = 'cash' | 'card' | 'transfer';
 
@@ -32,82 +37,83 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
     const [paymentNote, setPaymentNote] = useState('');
     const [discount, setDiscount] = useState(0);
+    const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+    const { user } = useAuth();
+    const { t } = useTranslation();
+
 
     useEffect(() => {
         loadTransactions();
     }, [account.id]);
 
-    useEffect(() => {
-        const loadProducts = async () => {
-            try {
-                const response = await fetch(`${config.apiUrl}/products`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    setProducts(data);
-                }
-            } catch (error) {
-                console.error('Error loading products:', error);
-            }
-        };
-        loadProducts();
-    }, []);
-
     const handleAddItems = async (items: Array<{ productId: number; quantity: number; price: number }>) => {
         try {
-            const response = await fetch(`${config.apiUrl}/accounts/${account.id}/transactions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({ items })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to add items');
+            if (!user) {
+                throw new Error('User not authenticated');
             }
-
+            await accountOperations.addItems(account.id, items, user.id, 'ACCUMULATED', 'debit');
             setShowItemSelector(false);
             await loadTransactions();
         } catch (error) {
             setError('Error adding items');
+            console.error('Error adding items:', error);
         }
     };
 
     const loadTransactions = async () => {
         try {
-            const response = await fetch(`${config.apiUrl}/accounts/${account.id}/transactions`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
+            const db = await initDatabase();
 
-            if (!response.ok) throw new Error('Failed to load transactions');
+            // Obtener transacciones
+            const tx = db.transaction(['accountTransactions', 'products'], 'readonly');
+            const index = tx.objectStore('accountTransactions').index('by-account');
+            const productsStore = tx.objectStore('products');
 
-            const data = await response.json();
-            const formattedTransactions = data.map((t: any) => ({
-                ...t,
-                createdAt: new Date(t.createdAt)
-            }));
+            const transactions = await index.getAll(account.id);
+
+            // Enriquecer las transacciones con la información de los productos
+            const formattedTransactions = await Promise.all(
+                transactions.map(async t => {
+                    if (t.items) {
+                        const itemsWithProducts = await Promise.all(
+                            t.items.map(async (item: AccountTransactionItem) => {
+                                const product = await productsStore.get(item.productId);
+                                return {
+                                    ...item,
+                                    product: product
+                                };
+                            })
+                        );
+                        return {
+                            ...t,
+                            items: itemsWithProducts,
+                            createdAt: new Date(t.createdAt)
+                        };
+                    }
+                    return {
+                        ...t,
+                        createdAt: new Date(t.createdAt)
+                    };
+                })
+            );
+
+            formattedTransactions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
             setTransactions(formattedTransactions);
 
             // Calcular balance
             const totalDebit = formattedTransactions
-                .filter((t: AccountTransaction) => t.type === 'debit')
-                .reduce((sum: number, t: AccountTransaction) => sum + t.amount, 0);
+                .filter(t => t.type === 'debit')
+                .reduce((sum, t) => sum + t.amount, 0);
 
             const totalCredits = formattedTransactions
-                .filter((t: AccountTransaction) => t.type === 'credit')
-                .reduce((sum: number, t: AccountTransaction) => sum + t.amount + (t.discount || 0), 0);
+                .filter(t => t.type === 'credit')
+                .reduce((sum, t) => sum + t.amount + (t.discount || 0), 0);
 
             setBalance(parseFloat((totalDebit - totalCredits).toFixed(2)));
         } catch (err) {
             setError('Error loading transactions');
+            console.error('Error loading transactions:', err);
         } finally {
             setIsLoading(false);
         }
@@ -127,24 +133,23 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                 return;
             }
 
-            const response = await fetch(`${config.apiUrl}/accounts/${account.id}/payment`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
+
+            await accountOperations.addItems(
+                account.id,
+                [], // No hay items en un pago
+                user.id,
+                'ACCUMULATED',
+                'credit',
+                {
                     amount,
                     method: paymentMethod,
                     discount,
                     note: paymentNote || undefined
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Payment failed');
-            }
+                }
+            );
 
             setShowPaymentModal(false);
             setPaymentAmount('');
@@ -183,37 +188,35 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
         }
     };
 
-    const handleCloseAccount = async () => {
-        try {
-            const response = await fetch(`${config.apiUrl}/accounts/${account.id}/close`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
+    const handleCloseAccount = () => {
+        setShowCloseConfirm(true);
+    };
 
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Failed to close account');
+    const confirmClose = async () => {
+        try {
+            if (!user) {
+                throw new Error('User not authenticated');
             }
 
+            await accountOperations.closeAccount(account.id, user.id, 'ACCUMULATED');
             await onUpdate();
+            setShowCloseConfirm(false);
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Error closing account');
         }
     };
 
-    if (isLoading) return <div>Loading...</div>;
+    if (isLoading) return <div>{t('common.loading')}</div>;
 
     return (
         <div>
             <div className="mb-6 flex justify-between items-start">
                 <div>
                     <h2 className="text-2xl font-bold">{account.customerName}</h2>
-                    <p className="text-gray-600">Accumulated Account</p>
-                    <p className="text-sm text-gray-500">Opened: {account.openedAt.toLocaleString()}</p>
+                    <p className="text-gray-600">{t('accounts.accumulated')}</p>
+                    <p className="text-sm text-gray-500">{t('accounts.openedAt')}: {account.openedAt.toLocaleString()}</p>
                     {account.creditLimit && (
-                        <p className="text-sm text-gray-500">Credit Limit: ${account.creditLimit}</p>
+                        <p className="text-sm text-gray-500">{t('accounts.creditLimit')}: ${account.creditLimit}</p>
                     )}
                 </div>
                 <div className="space-y-2">
@@ -222,7 +225,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                         {account.status}
                     </span>
                     <p className={`text-lg font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        Balance: ${Math.abs(balance).toFixed(2)}
+                        {t('accounts.balance')}: ${Math.abs(balance).toFixed(2)}
                     </p>
                 </div>
             </div>
@@ -233,7 +236,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                         onClick={() => setShowPaymentModal(true)}
                         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                     >
-                        Make Payment
+                        {t('accounts.makePayment')}
                     </button>
                 )}
                 {account.status === 'open' && (
@@ -241,7 +244,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                         onClick={() => setShowItemSelector(true)}
                         className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
                     >
-                        Add Items
+                        {t('accounts.addItems')}
                     </button>
                 )}
                 {account.status === 'open' && Math.abs(balance) < 0.01 && (
@@ -249,26 +252,34 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                         onClick={handleCloseAccount}
                         className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
                     >
-                        Close Account
+                        {t('accounts.closeAccount')}
                     </button>
                 )}
                 <button
                     onClick={handleDownloadReport}
                     className="bg-gray-100 text-gray-700 px-4 py-2 rounded hover:bg-gray-200"
                 >
-                    Download Report
+                    {t('register.downloadReport')}
                 </button>
             </div>
+
+            {showCloseConfirm && (
+                <CloseAccountConfirm
+                    account={account}
+                    onConfirm={confirmClose}
+                    onCancel={() => setShowCloseConfirm(false)}
+                />
+            )}
 
             {/* Lista de transacciones */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.date')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.type')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.details')}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.amount')}</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -282,7 +293,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                         ? 'bg-red-100 text-red-800'
                                         : 'bg-green-100 text-green-800'
                                         }`}>
-                                        {transaction.type === 'debit' ? 'Consumption' : 'Payment'}
+                                        {t(`accounts.${transaction.type === 'debit' ? 'consumption' : 'payment'}`)}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -293,7 +304,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                         </>
                                     ) : (
                                         transaction.items?.map(item => (
-                                            <div key={item.id}>
+                                            <div key={`${transaction.id}-${item.productId}-${item.quantity}`}>
                                                 {item.product?.name} x {item.quantity} @ ${item.price}
                                             </div>
                                         ))
@@ -315,6 +326,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                 <div className="fixed inset-0 bg-white z-50">
                     <div className="p-4">
                         <AccountItemsSelector
+                            accountId={account.id}
                             onConfirm={handleAddItems}
                             onCancel={() => setShowItemSelector(false)}
                         />
@@ -326,19 +338,19 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
             {showPaymentModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h3 className="text-lg font-bold mb-4">Make Payment</h3>
+                        <h3 className="text-lg font-bold mb-4">{t('accounts.makePayment')}</h3>
 
                         {/* Montos */}
                         <div className="space-y-4 mb-6">
                             <div className="flex justify-between">
-                                <span className="font-medium">Pending:</span>
+                                <span className="font-medium">{t('accounts.pending')}:</span>
                                 <span>${balance.toFixed(2)}</span>
                             </div>
 
                             {/* Descuento */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Discount
+                                    {t('common.discount')}
                                 </label>
                                 <input
                                     type="number"
@@ -361,7 +373,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                             {/* Monto a pagar */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Monto a pagar:
+                                    {t('common.amountToPay')}:
                                 </label>
                                 <input
                                     type="number"
@@ -373,10 +385,10 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                 />
                             </div>
 
-                            {/* Método de pago */}
+                            {/* Metodo de pago */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Payment Method
+                                    {t('pos.paymentMethod')}
                                 </label>
                                 <div className="space-y-2">
                                     <label className="flex items-center">
@@ -388,7 +400,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                             onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                                             className="mr-2"
                                         />
-                                        Cash
+                                        {t('pos.cash')}
                                     </label>
                                     <label className="flex items-center">
                                         <input
@@ -399,7 +411,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                             onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                                             className="mr-2"
                                         />
-                                        Card
+                                        {t('pos.card')}
                                     </label>
                                     <label className="flex items-center">
                                         <input
@@ -410,7 +422,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                             onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                                             className="mr-2"
                                         />
-                                        Transfer
+                                        {t('pos.transfer')}
                                     </label>
                                 </div>
                             </div>
@@ -418,7 +430,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                             {/* Nota de pago */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Payment note
+                                    {t('accounts.paymentNote')}
                                 </label>
                                 <input
                                     type="text"
@@ -438,7 +450,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                 onClick={handleMakePayment}
                                 className="flex-1 bg-green-600 text-white py-2 rounded-md hover:bg-green-700"
                             >
-                                Complete
+                                {t('common.confirm')}
                             </button>
                             <button
                                 onClick={() => {
@@ -451,7 +463,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                 }}
                                 className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-md hover:bg-gray-200"
                             >
-                                Cancel
+                                {t('common.cancel')}
                             </button>
                         </div>
                     </div>

@@ -2,10 +2,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
+
 
 const Navigation = () => {
     const { user, logout } = useAuth();
     const location = useLocation();
+    const { t } = useTranslation();
 
     if (!user) return null;
 
@@ -23,7 +26,7 @@ const Navigation = () => {
                                 : 'text-gray-700 hover:bg-blue-50'
                                 }`}
                         >
-                            POS
+                            {t('nav.pos')}
                         </Link>
 
                         {user.role === 'admin' && (
@@ -34,7 +37,7 @@ const Navigation = () => {
                                     : 'text-gray-700 hover:bg-blue-50'
                                     }`}
                             >
-                                Inventory
+                                {t('nav.inventory')}
                             </Link>
                         )}
 
@@ -46,7 +49,7 @@ const Navigation = () => {
                                     : 'text-gray-700 hover:bg-blue-50'
                                     }`}
                             >
-                                Suppliers
+                                {t('nav.suppliers')}
                             </Link>
                         )}
 
@@ -57,7 +60,7 @@ const Navigation = () => {
                                 : 'text-gray-700 hover:bg-blue-50'
                                 }`}
                         >
-                            Register
+                            {t('nav.register')}
                         </Link>
 
                         {user.role === 'admin' && (
@@ -68,7 +71,7 @@ const Navigation = () => {
                                     : 'text-gray-700 hover:bg-blue-50'
                                     }`}
                             >
-                                Users
+                                {t('nav.users')}
                             </Link>
                         )}
 
@@ -79,7 +82,17 @@ const Navigation = () => {
                                 : 'text-gray-700 hover:bg-blue-50'
                                 }`}
                         >
-                            Accounts
+                            {t('nav.accounts')}
+                        </Link>
+
+                        <Link
+                            to="/reports/sales"
+                            className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/reports/sales')
+                                ? 'bg-blue-500 text-white'
+                                : 'text-gray-700 hover:bg-blue-50'
+                                }`}
+                        >
+                            {t('nav.salesReport')}
                         </Link>
 
                     </div>
@@ -92,7 +105,7 @@ const Navigation = () => {
                             onClick={logout}
                             className="px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50"
                         >
-                            Logout
+                            {t('nav.logout')}
                         </button>
                     </div>
                 </div>

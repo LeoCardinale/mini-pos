@@ -3,6 +3,9 @@ import { Product } from '../../types';
 import ProductsGrid from '../pos/ProductsGrid';
 import SearchBar from '../common/SearchBar';
 import { config } from '../../config';
+import { initDatabase } from '../../lib/database';
+import { t } from 'i18next';
+
 
 interface CartItem {
     product: Product;
@@ -10,11 +13,12 @@ interface CartItem {
 }
 
 interface AccountItemsSelectorProps {
+    accountId: number;
     onConfirm: (items: Array<{ productId: number; quantity: number; price: number }>) => Promise<void>;
     onCancel: () => void;
 }
 
-const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ onConfirm, onCancel }) => {
+const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ accountId, onConfirm, onCancel }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -24,15 +28,12 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ onConfirm, 
     useEffect(() => {
         const loadProducts = async () => {
             try {
-                const response = await fetch(`${config.apiUrl}/products`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    setProducts(data.filter((p: Product) => p.isActive));
-                }
+                const db = await initDatabase();
+                const tx = db.transaction('products', 'readonly');
+                const products = await tx.store.getAll();
+
+                // Filtrar solo productos activos
+                setProducts(products.filter((p: Product) => p.isActive));
             } catch (error) {
                 console.error('Error loading products:', error);
             }
@@ -69,18 +70,25 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ onConfirm, 
     };
 
     const handleConfirm = async () => {
+        console.log('Starting handleConfirm');
         if (cartItems.length === 0) {
             setError('Please add at least one item');
             return;
         }
 
-        const items = cartItems.map(item => ({
-            productId: item.product.id,
-            quantity: item.quantity,
-            price: item.product.price
-        }));
+        try {
+            const items = cartItems.map(item => ({
+                productId: item.product.id,
+                quantity: item.quantity,
+                price: item.product.price
+            }));
 
-        await onConfirm(items);
+            await onConfirm(items);
+
+        } catch (error) {
+            setError('Error adding accumulated items');
+            console.error('Error adding accumulated items:', error);
+        }
     };
 
     return (
@@ -90,7 +98,7 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ onConfirm, 
                     <SearchBar
                         value={searchTerm}
                         onChange={setSearchTerm}
-                        placeholder="Search products..."
+                        placeholder={t('inventory.searchPlaceholder')}
                     />
                 </div>
 
@@ -102,9 +110,9 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ onConfirm, 
                             : 'bg-gray-100 text-gray-800'
                             }`}
                     >
-                        All
+                        {t('common.all')}
                     </button>
-                    {['Wines', 'Beers', 'Spirits', 'Food', 'Others'].map(category => (
+                    {[t('inventory.catBeers'), t('inventory.catFood'), t('inventory.catSpirits'), t('inventory.catWines'), t('inventory.catOthers')].map(category => (
                         <button
                             key={category}
                             onClick={() => setSelectedCategory(category)}
@@ -132,7 +140,7 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ onConfirm, 
             </div>
 
             <div className="w-96 bg-white rounded-lg shadow p-4">
-                <h3 className="font-medium mb-4">Selected Items</h3>
+                <h3 className="font-medium mb-4">{t('accounts.selectedItems')}</h3>
                 <div className="flex-1 overflow-auto mb-4">
                     {cartItems.map(item => (
                         <div key={item.product.id} className="mb-2 p-2 border rounded">
@@ -168,13 +176,13 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ onConfirm, 
                         onClick={handleConfirm}
                         className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                     >
-                        Confirm
+                        {t('common.confirm')}
                     </button>
                     <button
                         onClick={onCancel}
                         className="flex-1 bg-gray-100 py-2 rounded hover:bg-gray-200"
                     >
-                        Cancel
+                        {t('common.cancel')}
                     </button>
                 </div>
             </div>

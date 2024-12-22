@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
+
 
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -9,6 +11,7 @@ const Login = () => {
     const [error, setError] = useState('');
     const { login } = useAuth();
     const navigate = useNavigate();
+    const { t } = useTranslation();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -18,7 +21,7 @@ const Login = () => {
             await login(email, password);
             navigate('/inventory'); // Redirigir al inventario después del login
         } catch (err) {
-            setError('Invalid credentials');
+            setError(t('auth.invalidCredentials'));
         }
     };
 
@@ -26,8 +29,8 @@ const Login = () => {
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
                 <div>
-                    <h2 className="text-center text-3xl font-bold">Mini POS</h2>
-                    <p className="mt-2 text-center text-gray-600">Sign in to your account</p>
+                    <h2 className="text-center text-3xl font-bold">{t('common.appName')}</h2>
+                    <p className="mt-2 text-center text-gray-600">{t('auth.signInTitle')}</p>
                 </div>
 
                 {error && (
@@ -40,7 +43,7 @@ const Login = () => {
                     <div className="space-y-4">
                         <div>
                             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                                Email
+                                {t('auth.enterEmail')}
                             </label>
                             <input
                                 id="email"
@@ -53,7 +56,7 @@ const Login = () => {
                         </div>
                         <div>
                             <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                                Password
+                                {t('auth.enterPassword')}
                             </label>
                             <input
                                 id="password"
@@ -70,7 +73,7 @@ const Login = () => {
                         type="submit"
                         className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
-                        Sign in
+                        {t('auth.signIn')}
                     </button>
                 </form>
             </div>

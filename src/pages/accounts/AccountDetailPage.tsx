@@ -4,12 +4,14 @@ import { Account, AccountType } from '../../types';
 import { config } from '../../config';
 import PrepaidAccountDetail from '../../components/accounts/PrepaidAccountDetail';
 import AccumulatedAccountDetail from '../../components/accounts/AccumulatedAccountDetail';
+import { useTranslation } from 'react-i18next';
 
 const AccountDetailPage = () => {
     const { id } = useParams();
     const [account, setAccount] = useState<Account | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const { t } = useTranslation();
 
     useEffect(() => {
         loadAccount();

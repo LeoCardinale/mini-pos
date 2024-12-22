@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import SupplierForm from '../../components/suppliers/SupplierForm';
 import { config } from '../../config';
+import { useTranslation } from 'react-i18next';
 
 interface Supplier {
     id: number;
@@ -22,6 +23,7 @@ const SuppliersPage = () => {
     const [error, setError] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+    const { t } = useTranslation();
 
     useEffect(() => {
         loadSuppliers();
@@ -37,13 +39,13 @@ const SuppliersPage = () => {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to load suppliers');
+                throw new Error(t('errors.loadingSuppliers'));
             }
 
             const data = await response.json();
             setSuppliers(data);
         } catch (err) {
-            setError('Error loading suppliers');
+            setError(t('errors.loadingSuppliers'));
         } finally {
             setIsLoading(false);
         }
@@ -83,7 +85,7 @@ const SuppliersPage = () => {
     };
 
     const handleDelete = async (supplierId: number) => {
-        if (!confirm('Are you sure you want to delete this supplier?')) return;
+        if (!confirm(t('confirmations.deleteSupplier'))) return;
 
         try {
             const response = await fetch(`${config.apiUrl}/suppliers/${supplierId}`, {
@@ -103,17 +105,17 @@ const SuppliersPage = () => {
         }
     };
 
-    if (isLoading) return <div>Loading...</div>;
+    if (isLoading) return <div>{t('common.loading')}</div>;
 
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">Suppliers</h1>
+                <h1 className="text-2xl font-bold">{t('suppliers.title')}</h1>
                 <button
                     onClick={() => setShowForm(true)}
                     className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
                 >
-                    Add Supplier
+                    {t('suppliers.addSupplier')}
                 </button>
             </div>
 
@@ -129,28 +131,28 @@ const SuppliersPage = () => {
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    ID
+                                    {t('common.id')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Fiscal Name
+                                    {t('suppliers.fiscalName')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Trade Name
+                                    {t('suppliers.tradeName')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Contact
+                                    {t('suppliers.contact')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Phone/Email
+                                    {t('suppliers.phoneEmail')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Tax ID
+                                    {t('suppliers.taxId')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Status
+                                    {t('common.status')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Actions
+                                    {t('common.actions')}
                                 </th>
                             </tr>
                         </thead>
@@ -193,7 +195,7 @@ const SuppliersPage = () => {
                                             ? 'bg-green-100 text-green-800'
                                             : 'bg-red-100 text-red-800'
                                             }`}>
-                                            {supplier.active ? 'Active' : 'Inactive'}
+                                            {t(`common.${supplier.active ? 'active' : 'inactive'}`)}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -201,13 +203,13 @@ const SuppliersPage = () => {
                                             onClick={() => handleEdit(supplier)}
                                             className="text-blue-600 hover:text-blue-900 mr-4"
                                         >
-                                            Edit
+                                            {t('common.edit')}
                                         </button>
                                         <button
                                             onClick={() => handleDelete(supplier.id)}
                                             className="text-red-600 hover:text-red-900"
                                         >
-                                            Delete
+                                            {t('common.delete')}
                                         </button>
                                     </td>
                                 </tr>
@@ -222,7 +224,7 @@ const SuppliersPage = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
                         <h2 className="text-xl font-bold mb-4">
-                            {editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}
+                            {editingSupplier ? t('suppliers.titleEdit') : t('suppliers.titleAdd')}
                         </h2>
                         <SupplierForm
                             initialData={editingSupplier || undefined}

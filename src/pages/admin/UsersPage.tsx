@@ -1,4 +1,7 @@
 // src/pages/admin/UsersPage.tsx
+import LanguageSelector from '../../components/common/LanguageSelector';
+import { useTranslation } from 'react-i18next';
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import UserForm from '../../components/admin/UserForm';
@@ -18,6 +21,7 @@ const UsersPage = () => {
     const [error, setError] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
     const { user: currentUser } = useAuth();
+    const { t } = useTranslation();
 
     useEffect(() => {
         loadUsers();
@@ -36,7 +40,7 @@ const UsersPage = () => {
             const data = await response.json();
             setUsers(data);
         } catch (err) {
-            setError('Error loading users');
+            setError(t('errors.loadingUsers'));
         } finally {
             setIsLoading(false);
         }
@@ -80,22 +84,22 @@ const UsersPage = () => {
 
             await loadUsers();
         } catch (err) {
-            setError('Error updating user status');
+            setError(t('errors.updatingUserStatus'));
         }
     };
 
-    if (isLoading) return <div>Loading...</div>;
+    if (isLoading) return <div>{t('common.loading')}</div>;
     if (error) return <div className="text-red-600">{error}</div>;
 
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">User Management</h1>
+                <h1 className="text-2xl font-bold">{t('users.title')}</h1>
                 <button
                     onClick={() => setShowForm(true)}
                     className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                 >
-                    Add User
+                    {t('users.addUser')}
                 </button>
             </div>
 
@@ -104,19 +108,19 @@ const UsersPage = () => {
                     <thead className="bg-gray-50">
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                Name
+                                {t('common.name')}
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                Email
+                                {t('common.email')}
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                Role
+                                {t('common.role')}
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                Status
+                                {t('common.status')}
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                Actions
+                                {t('common.actions')}
                             </th>
                         </tr>
                     </thead>
@@ -131,7 +135,7 @@ const UsersPage = () => {
                                         ? 'bg-green-100 text-green-800'
                                         : 'bg-red-100 text-red-800'
                                         }`}>
-                                        {user.active ? 'Active' : 'Inactive'}
+                                        {t(`common.${user.active ? 'active' : 'inactive'}`)}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -140,7 +144,7 @@ const UsersPage = () => {
                                         disabled={user.email === 'admin@example.com'}
                                         className={`text-${user.active ? 'red' : 'green'}-600 hover:text-${user.active ? 'red' : 'green'}-900 disabled:opacity-50`}
                                     >
-                                        {user.active ? 'Deactivate' : 'Activate'}
+                                        {t(`users.${user.active ? 'deactivate' : 'activate'}`)}
                                     </button>
                                 </td>
                             </tr>
@@ -152,7 +156,7 @@ const UsersPage = () => {
             {showForm && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h2 className="text-xl font-bold mb-4">Create New User</h2>
+                        <h2 className="text-xl font-bold mb-4">{t('users.createUser')}</h2>
                         <UserForm
                             onSubmit={handleCreateUser}
                             onCancel={() => setShowForm(false)}

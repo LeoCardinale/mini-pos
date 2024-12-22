@@ -10,6 +10,7 @@ import productRoutes from './routes/productRoutes';
 import supplierRoutes from './routes/supplierRoutes';
 import transactionRoutes from './routes/transactionRoutes';
 import accountRoutes from './routes/accountRoutes';
+import salesRoutes from './routes/salesRoutes';
 
 
 const app = express();
@@ -44,6 +45,8 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/transactions', transactionRoutes);
 
 app.use('/api/accounts', accountRoutes);
+
+app.use('/api/sales', salesRoutes);
 
 // Manejo de errores global
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

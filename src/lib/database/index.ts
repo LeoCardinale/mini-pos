@@ -1,6 +1,7 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { config } from '../../config';
-import { Product, Transaction } from '../../types';
+import { Product, Transaction, AccountTransaction } from '../../types';
+import { SyncOperation } from '../../types/sync';
 
 type CreateProductData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
 type UpdateProductData = Partial<CreateProductData>;
@@ -44,6 +45,11 @@ interface DBSchema {
         value: SyncQueueItem;
         indexes: { 'by-status': string };
     };
+    accountTransactions: {
+        key: number;
+        value: AccountTransaction;
+        indexes: { 'by-account': number };
+    };
 }
 
 let db: IDBPDatabase<DBSchema>;
@@ -51,7 +57,7 @@ let db: IDBPDatabase<DBSchema>;
 export const initDatabase = async () => {
     if (db) return db;
 
-    db = await openDB<DBSchema>('pos-db', 2, {  // Incrementar versión a 2
+    db = await openDB<DBSchema>('pos-db', 2, {
         upgrade(db, oldVersion, newVersion) {
             // Stores existentes
             if (!db.objectStoreNames.contains('products')) {
@@ -76,13 +82,28 @@ export const initDatabase = async () => {
                 const syncStore = db.createObjectStore('syncQueue', { keyPath: 'id' });
                 syncStore.createIndex('by-status', 'status');
             }
+
+            if (!db.objectStoreNames.contains('accountTransactions')) {
+                const accountTransactionsStore = db.createObjectStore('accountTransactions', {
+                    keyPath: 'id',
+                    autoIncrement: true
+                });
+                accountTransactionsStore.createIndex('by-account', 'accountId');
+            }
+
+            if (!db.objectStoreNames.contains('salesRecords')) {
+                db.createObjectStore('salesRecords', {
+                    keyPath: 'id',
+                    autoIncrement: true
+                });
+            }
         },
     });
 
     return db;
 };
 
-// Función auxiliar para encolar operaciones de sincronización
+// Funcion auxiliar para encolar operaciones de sincronizacion
 const enqueueSyncOperation = async (operation: Omit<SyncQueueItem, 'id' | 'timestamp'>) => {
     const db = await initDatabase();
     const syncOp: SyncQueueItem = {
@@ -244,7 +265,7 @@ export const transactionOperations = {
         const db = await initDatabase();
         const id = await db.add('transactions', transaction);
 
-        // Encolar para sincronización
+        // Encolar para sincronizaci贸n
         await enqueueSyncOperation({
             type: 'create',
             entity: 'transaction',
@@ -279,7 +300,7 @@ export const transactionOperations = {
                 createdAt: new Date(updatedTransaction.createdAt)
             });
 
-            // Forzar actualización de productos
+            // Forzar actualizaci贸n de productos
             await productOperations.getAll();
 
             return updatedTransaction;
@@ -297,6 +318,125 @@ export const transactionOperations = {
     async getById(id: number) {
         const db = await initDatabase();
         return await db.get('transactions', id);
+    }
+};
+
+export const accountOperations = {
+    async addItems(
+        accountId: number,
+        items: Array<{ productId: number; quantity: number; price: number }>,
+        userId: string,
+        accountType: 'PREPAID' | 'ACCUMULATED',
+        transactionType: 'debit' | 'credit',
+        metadata?: {
+            amount?: number;
+            method?: string;
+            discount?: number;
+            note?: string;
+        }
+    ) {
+        console.log('Starting accountOperations.addItems', { accountId, items, accountType, transactionType });
+
+        const db = await initDatabase();
+
+        try {
+            // Actualizar stock localmente
+            if (transactionType === 'credit') {
+                const tx = db.transaction('products', 'readwrite');
+                const productStore = tx.objectStore('products');
+
+                for (const item of items) {
+                    const product = await productStore.get(item.productId);
+                    if (product) {
+                        product.stock -= item.quantity;
+                        await productStore.put(product);
+                    }
+                }
+                await tx.done;
+            }
+
+            // Crear transacción local
+            const accountTx = db.transaction('accountTransactions', 'readwrite');
+            const amount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+
+            const accountTransaction: AccountTransaction = {
+                id: crypto.randomUUID(),
+                accountId,
+                amount: metadata?.amount || items.reduce((sum, item) => sum + (item.quantity * item.price), 0),
+                type: transactionType,
+                accountType,
+                createdAt: new Date(),
+                userId,
+                method: metadata?.method,
+                discount: metadata?.discount,
+                note: metadata?.note,
+                items: items.map(item => ({
+                    id: 0,
+                    transactionId: '',
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    price: item.price
+                }))
+            };
+
+            await accountTx.store.add(accountTransaction);
+            await accountTx.done;
+
+            // Encolar para sincronización
+            await enqueueSyncOperation({
+                type: 'create',
+                entity: 'transaction',
+                data: JSON.stringify(accountTransaction),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
+
+            console.log('Account transaction operation enqueued');
+
+        } catch (error) {
+            console.error('Error in addItems:', error);
+            throw error;
+        }
+    },
+
+    async closeAccount(accountId: number, userId: string, accountType: 'PREPAID' | 'ACCUMULATED') {
+        console.log('Starting accountOperations.closeAccount', { accountId, accountType });
+
+        try {
+            // Encolar operación de cierre
+            await enqueueSyncOperation({
+                type: 'update',
+                entity: 'transaction',
+                data: JSON.stringify({
+                    accountId,
+                    operation: 'close',
+                    accountType,
+                    userId,
+                    timestamp: Date.now()
+                }),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
+
+            // Actualizar estado local
+            const db = await initDatabase();
+            const tx = db.transaction('accountTransactions', 'readwrite');
+            const index = tx.store.index('by-account');
+
+            // Marcar todas las transacciones de la cuenta como cerradas
+            const transactions = await index.getAll(accountId);
+            for (const transaction of transactions) {
+                transaction.status = 'closed';
+                await tx.store.put(transaction);
+            }
+
+            await tx.done;
+
+            console.log('Account close operation enqueued');
+        } catch (error) {
+            console.error('Error in closeAccount:', error);
+            throw error;
+        }
     }
 };
 
@@ -335,7 +475,7 @@ export const cashRegisterOperations = {
             await db.put('cashRegister', updated);
             console.log('Register updated in IndexedDB');
 
-            // Resto del código...
+            // Resto del codigo...
         } catch (error) {
             console.error('Error updating register:', error);
             throw error;
@@ -363,7 +503,7 @@ export const cashRegisterOperations = {
     }
 };
 
-// Operaciones de la cola de sincronización
+// Operaciones de la cola de sincronizacion
 export const syncQueueOperations = {
     async getPendingOperations() {
         const db = await initDatabase();
@@ -401,6 +541,17 @@ export const syncQueueOperations = {
         const tx = db.transaction('syncQueue', 'readwrite');
         await tx.store.clear();
         await tx.done;
+    },
+
+    async addOperation(operation: Omit<SyncOperation, 'id' | 'timestamp'>) {
+        const db = await initDatabase();
+        const syncOp = {
+            ...operation,
+            id: crypto.randomUUID(),
+            timestamp: Date.now()
+        };
+        await db.add('syncQueue', syncOp);
+        return syncOp;
     }
 };
 
@@ -411,4 +562,14 @@ export const clearDatabase = async () => {
     await db.clear('cashRegister');
     await db.clear('syncQueue');
     console.log('Local database cleared');
+};
+
+export const salesOperations = {
+    async create(saleData: any) {
+        const db = await initDatabase();
+        await db.add('salesRecords', {
+            ...saleData,
+            createdAt: new Date(saleData.createdAt)
+        });
+    }
 };

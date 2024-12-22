@@ -50,7 +50,7 @@ export interface CashRegister {
 }
 
 // Tipos para sincronización
-export type SyncEntityType = 'product' | 'transaction' | 'cashRegister';
+export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord';
 export type SyncOperationType = 'create' | 'update' | 'delete';
 export type SyncStatus = 'pending' | 'completed' | 'failed';
 
@@ -81,10 +81,11 @@ export interface PrepaidProduct {
 }
 
 export interface AccountTransaction {
-    id: number;
+    id: string;
     accountId: number;
     amount: number;
     type: 'debit' | 'credit';
+    accountType: 'PREPAID' | 'ACCUMULATED';
     createdAt: Date;
     userId: string;
     items?: AccountTransactionItem[];
@@ -95,7 +96,7 @@ export interface AccountTransaction {
 
 export interface AccountTransactionItem {
     id: number;
-    transactionId: number;
+    transactionId: string;
     productId: number;
     quantity: number;
     price: number;

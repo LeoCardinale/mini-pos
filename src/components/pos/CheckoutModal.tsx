@@ -1,10 +1,11 @@
-// src/components/pos/CheckoutModal.tsx
 import React, { useState } from 'react';
 import { PaymentMethod } from '../../types';
+import { useTranslation } from 'react-i18next';
 
 interface CheckoutModalProps {
     total: number;
     discount: number;
+    subtotal: number;
     onComplete: (paymentMethod: PaymentMethod, customerName: string, discount: number) => void;
     onCancel: () => void;
 }
@@ -14,6 +15,7 @@ const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
 const CheckoutModal: React.FC<CheckoutModalProps> = ({
     total,
     discount,
+    subtotal,
     onComplete,
     onCancel
 }) => {
@@ -24,44 +26,33 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
         e.preventDefault();
         onComplete(paymentMethod, customerName, discount);
     };
+    const { t } = useTranslation();
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                <h2 className="text-xl font-bold mb-4">Complete Sale</h2>
+                <h2 className="text-xl font-bold mb-4">{t('pos.completeSale')}</h2>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Amount Details
-                        </label>
                         <div className="text-3xl font-bold space-y-2">
                             <div className="text-lg text-gray-600">
-                                Subtotal: ${(total + discount).toFixed(2)}
+                                {t('common.subtotal')}: ${subtotal.toFixed(2)}
                             </div>
                             {discount > 0 && (
                                 <div className="text-lg text-red-600">
-                                    Discount: -${discount.toFixed(2)}
+                                    {t('pos.discount')}: -${discount.toFixed(2)}
                                 </div>
                             )}
                             <div className="text-green-600">
-                                Total: ${total.toFixed(2)}
+                                {t('common.total')}: ${total.toFixed(2)}
                             </div>
                         </div>
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Total Amount
-                        </label>
-                        <div className="text-3xl font-bold text-green-600">
-                            ${total.toFixed(2)}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Payment Method
+                            {t('pos.paymentMethod')}
                         </label>
                         <div className="space-y-2">
                             {PAYMENT_METHODS.map((method) => (
@@ -74,7 +65,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                                         onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                                         className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300"
                                     />
-                                    <span className="ml-2 capitalize">{method}</span>
+                                    <span className="ml-2 capitalize">{t(`pos.${method}`)}</span>
                                 </label>
                             ))}
                         </div>
@@ -82,7 +73,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Customer Name (optional)
+                            {t('pos.customerName')}
                         </label>
                         <input
                             type="text"
@@ -95,17 +86,16 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <div className="flex gap-3 pt-4">
                         <button
                             type="submit"
-                            //onClick={() => onComplete(paymentMethod, customerName, discount)}
                             className="flex-1 bg-green-600 text-white py-2 rounded-md hover:bg-green-700"
                         >
-                            Complete
+                            {t('common.confirm')}
                         </button>
                         <button
                             type="button"
                             onClick={onCancel}
                             className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200"
                         >
-                            Cancel
+                            {t('common.cancel')}
                         </button>
                     </div>
                 </form>

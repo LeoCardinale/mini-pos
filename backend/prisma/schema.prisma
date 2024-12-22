@@ -45,6 +45,7 @@ model Product {
     transactionItems TransactionItem[]
     prepaidProducts PrepaidProduct[]
     accountItems    AccountTransactionItem[]
+    salesRecords         SalesRecord[]
 }
 
 model Transaction {
@@ -107,6 +108,7 @@ model User {
   accountsCreated   Account[]  @relation("AccountCreator")
   accountsClosed    Account[]  @relation("AccountCloser")
   accountTransactions AccountTransaction[]
+  salesRecords         SalesRecord[]
 }
 
 model Role {
@@ -179,13 +181,14 @@ model PrepaidProduct {
 }
 
 model AccountTransaction {
-    id          Int       @id @default(autoincrement())
+    id          String    @id @default(uuid())
     accountId   Int
     amount      Float
-    type        String    // "debit" | "credit"
+    type        String    @db.VarChar(10)
     method      String?   // "cash" | "card" | "transfer"
     discount    Float     @default(0)
     note        String?
+    status      String    @default("active")
     createdAt   DateTime  @default(now())
     userId      String    
     user        User      @relation(fields: [userId], references: [id])
@@ -194,11 +197,25 @@ model AccountTransaction {
 }
 
 model AccountTransactionItem {
-    id            Int                @id @default(autoincrement())
-    transactionId Int
+    id            Int       @id @default(autoincrement())
+    transactionId String
     productId     Int
     quantity      Int
     price         Float
     transaction   AccountTransaction @relation(fields: [transactionId], references: [id])
     product       Product            @relation(fields: [productId], references: [id])
+}
+
+model SalesRecord {
+    id          String    @id @default(uuid())
+    productId   Int
+    product     Product   @relation(fields: [productId], references: [id])
+    quantity    Int
+    price       Float
+    total       Float
+    source      String    // "POS" | "ACCUMULATED" | "PREPAID"
+    sourceId    String    // ID de la transacción original
+    createdAt   DateTime  @default(now())
+    userId      String
+    user        User      @relation(fields: [userId], references: [id])
 }

@@ -6,6 +6,7 @@ import ProductForm from '../../components/inventory/ProductForm';
 import SearchBar from '../../components/common/SearchBar';
 import { config } from '../../config';
 import { syncClient } from '../../lib/sync/syncClient';
+import { useTranslation } from 'react-i18next';
 
 
 const InventoryPage = () => {
@@ -16,6 +17,7 @@ const InventoryPage = () => {
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const { t } = useTranslation();
 
     useEffect(() => {
         loadProducts();
@@ -28,7 +30,7 @@ const InventoryPage = () => {
             setProducts(allProducts);
             checkLowStock(allProducts);
         } catch (err) {
-            setError('Error loading products');
+            setError(t('errors.products'));
         } finally {
             setIsLoading(false);
         }
@@ -43,50 +45,18 @@ const InventoryPage = () => {
             const message = lowStockProducts
                 .map(p => `${p.name}: ${p.stock} left`)
                 .join('\n');
-            alert(`Low stock alert!\n${message}`);
+            alert(`Alerta de bajo stock!\n${message}`);
         }
     };
 
     const handleDelete = async (productId: number) => {
-        if (!confirm('Are you sure you want to delete this product?')) return;
+        if (!confirm(t('confirmations.deleteProduct'))) return;
 
         try {
             await productOperations.delete(productId);
             loadProducts();
         } catch (err) {
-            setError('Error deleting product');
-        }
-    };
-
-    const handleToggleStatus = async (productId: number) => {
-        try {
-            console.log('Frontend: Toggling status for product:', productId);
-            const response = await fetch(`${config.apiUrl}/products/${productId}/toggle-status`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-
-            if (!response.ok) throw new Error('Failed to toggle status');
-
-            const updatedProduct = await response.json();
-            console.log('Frontend: Updated product data:', updatedProduct);
-
-            // Actualizar el estado local inmediatamente
-            setProducts(prevProducts =>
-                prevProducts.map(product =>
-                    product.id === productId
-                        ? { ...product, isActive: updatedProduct.isActive }
-                        : product
-                )
-            );
-
-            // Forzar sincronización
-            await syncClient.sync();
-        } catch (err) {
-            console.error('Frontend: Error in handleToggleStatus:', err);
-            setError('Error toggling product status');
+            setError(t('errors.generic'));
         }
     };
 
@@ -103,12 +73,12 @@ const InventoryPage = () => {
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">Inventory Management</h1>
+                <h1 className="text-2xl font-bold">{t('inventory.title')}</h1>
                 <button
                     onClick={() => setShowAddForm(true)}
                     className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
                 >
-                    Add Product
+                    {t('inventory.addProduct')}
                 </button>
             </div>
 
@@ -123,7 +93,7 @@ const InventoryPage = () => {
                     <SearchBar
                         value={searchTerm}
                         onChange={setSearchTerm}
-                        placeholder="Search by name or barcode..."
+                        placeholder={t('inventory.searchPlaceholder')}
                     />
                 </div>
                 <div className="flex gap-2">
@@ -134,9 +104,9 @@ const InventoryPage = () => {
                             : 'bg-gray-100 text-gray-800'
                             }`}
                     >
-                        All
+                        {t('inventory.catAll')}
                     </button>
-                    {['Wines', 'Beers', 'Spirits', 'Food', 'Others'].map(category => (
+                    {[t('inventory.catBeers'), t('inventory.catFood'), t('inventory.catSpirits'), t('inventory.catWines'), t('inventory.catOthers')].map(category => (
                         <button
                             key={category}
                             onClick={() => setSelectedCategory(category)}
@@ -152,32 +122,32 @@ const InventoryPage = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <div>{t('common.loading')}</div>
             ) : (
                 <div className="bg-white rounded-lg shadow overflow-hidden">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Image
+                                    {t('inventory.image')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Name
+                                    {t('common.name')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Category
+                                    {t('common.category')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Price
+                                    {t('common.price')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Stock
+                                    {t('common.stock')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Status
+                                    {t('common.status')}
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Actions
+                                    {t('common.actions')}
                                 </th>
                             </tr>
                         </thead>
@@ -193,7 +163,7 @@ const InventoryPage = () => {
                                             />
                                         ) : (
                                             <div className="h-12 w-12 bg-gray-100 rounded-md flex items-center justify-center text-gray-400">
-                                                No image
+                                                {t('inventory.noImage')}
                                             </div>
                                         )}
                                     </td>
@@ -223,7 +193,7 @@ const InventoryPage = () => {
                                     </td>
 
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        {product.isActive ? 'Active' : 'Inactive'}
+                                        {product.isActive ? 'Activo' : 'Inactivo'}
                                     </td>
 
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -231,26 +201,15 @@ const InventoryPage = () => {
                                             onClick={() => setEditingProduct(product)}
                                             className="text-blue-600 hover:text-blue-900 mr-4"
                                         >
-                                            Edit
+                                            {t('common.edit')}
                                         </button>
 
                                         <button
                                             onClick={() => handleDelete(product.id)}
                                             className="text-red-600 hover:text-red-900"
                                         >
-                                            Delete
+                                            {t('common.delete')}
                                         </button>
-
-                                        {/*<button
-                                            onClick={() => {
-                                                console.log('Toggle button clicked for product:', product.id);
-                                                handleToggleStatus(product.id);
-                                            }}
-                                            className={`${product.isActive ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'
-                                                }`}
-                                        >
-                                            {product.isActive ? 'Deactivate' : 'Activate'}
-                                        </button>*/}
                                     </td>
                                 </tr>
                             ))}

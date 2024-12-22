@@ -1,5 +1,6 @@
 // src/components/suppliers/SupplierForm.tsx
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface Supplier {
     id?: number;
@@ -38,6 +39,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
     });
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const { t } = useTranslation();
 
     const handleChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -75,7 +77,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                 {/* Fiscal Name */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">
-                        Fiscal Name *
+                        {t('suppliers.fiscalName')}
                     </label>
                     <input
                         type="text"
@@ -90,7 +92,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                 {/* Trade Name */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">
-                        Trade Name *
+                        {t('suppliers.tradeName')}
                     </label>
                     <input
                         type="text"
@@ -105,7 +107,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                 {/* Contact Person */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">
-                        Contact Person
+                        {t('suppliers.contact')}
                     </label>
                     <input
                         type="text"
@@ -119,7 +121,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                 {/* Phone */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">
-                        Phone
+                        {t('suppliers.phone')}
                     </label>
                     <input
                         type="tel"
@@ -133,7 +135,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                 {/* Email */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">
-                        Email
+                        {t('common.email')}
                     </label>
                     <input
                         type="email"
@@ -147,7 +149,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                 {/* Tax ID */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700">
-                        Tax ID (RIF/NIF)
+                        {t('suppliers.taxId')}
                     </label>
                     <input
                         type="text"
@@ -162,7 +164,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
             {/* Address - Full width */}
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Address
+                    {t('suppliers.address')}
                 </label>
                 <input
                     type="text"
@@ -176,7 +178,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
             {/* Notes - Full width */}
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Notes
+                    {t('common.notes')}
                 </label>
                 <textarea
                     name="notes"
@@ -197,7 +199,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
                 <label className="ml-2 block text-sm text-gray-700">
-                    Active
+                    {t('common.active')}
                 </label>
             </div>
 
@@ -211,14 +213,14 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                     disabled={isLoading}
                     className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                    {isLoading ? 'Saving...' : initialData ? 'Update' : 'Create'}
+                    {isLoading ? t('common.saving') : initialData ? t('common.update') : t('common.save')}
                 </button>
                 <button
                     type="button"
                     onClick={onCancel}
                     className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200"
                 >
-                    Cancel
+                    {t('common.cancel')}
                 </button>
             </div>
         </form>

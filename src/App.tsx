@@ -13,6 +13,8 @@ import RegisterControl from './pages/register/RegisterControl';
 import SuppliersPage from './pages/admin/SuppliersPage';
 import AccountsPage from './pages/accounts/AccountsPage';
 import AccountDetailPage from './pages/accounts/AccountDetailPage';
+import SalesReportPage from './pages/reports/SalesReportPage';
+
 
 
 function App() {
@@ -88,6 +90,15 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <AccountDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/reports/sales"
+                element={
+                  <ProtectedRoute>
+                    <SalesReportPage />
                   </ProtectedRoute>
                 }
               />

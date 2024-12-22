@@ -2,7 +2,7 @@ export interface SyncOperation {
     id: string;
     timestamp: bigint;
     type: 'create' | 'update' | 'delete';
-    entity: 'product' | 'transaction' | 'cashRegister';
+    entity: 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord';
     data: string;
     deviceId: string;
     status: 'pending' | 'completed' | 'failed';

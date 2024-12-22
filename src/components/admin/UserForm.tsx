@@ -1,5 +1,6 @@
 // src/components/admin/UserForm.tsx
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface UserFormProps {
     onSubmit: (userData: UserFormData) => Promise<void>;
@@ -22,6 +23,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
     });
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const { t } = useTranslation();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -31,7 +33,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
         try {
             await onSubmit(formData);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Error creating user');
+            setError(err instanceof Error ? err.message : t('errors.saving', { item: t('users.user') }));
         } finally {
             setIsLoading(false);
         }
@@ -49,7 +51,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Name
+                    {t('common.name')}
                 </label>
                 <input
                     type="text"
@@ -63,7 +65,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
 
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Email
+                    {t('common.email')}
                 </label>
                 <input
                     type="email"
@@ -77,7 +79,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
 
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Password
+                    {t('common.password')}
                 </label>
                 <input
                     type="password"
@@ -92,7 +94,7 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
 
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    Role
+                    {t('common.role')}
                 </label>
                 <select
                     name="roleId"
@@ -100,8 +102,8 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
                     onChange={handleChange}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
-                    <option value="2">User</option>
-                    <option value="1">Admin</option>
+                    <option value="2">{t('users.userRole')}</option>
+                    <option value="1">{t('users.adminRole')}</option>
                 </select>
             </div>
 
@@ -115,14 +117,14 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
                     disabled={isLoading}
                     className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                    {isLoading ? 'Creating...' : 'Create User'}
+                    {isLoading ? t('common.creating') : t('users.createUser')}
                 </button>
                 <button
                     type="button"
                     onClick={onCancel}
                     className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200"
                 >
-                    Cancel
+                    {t('common.cancel')}
                 </button>
             </div>
         </form>

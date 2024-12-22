@@ -32,7 +32,7 @@ export const createAccount = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Credit limit must be greater than 0' });
         }
 
-        // Verificar límite de cuentas activas
+        // Verificar l铆mite de cuentas activas
         const activeAccounts = await prisma.account.count({
             where: { status: 'open' }
         });
@@ -91,20 +91,33 @@ export const addPrepaidProducts = async (req: Request, res: Response) => {
         await prisma.$transaction(async (prisma) => {
             let totalAmount = 0;
             for (const item of products) {
-                const product = await prisma.product.findUnique({
-                    where: { id: item.productId }
-                });
-                totalAmount += item.quantity * (product?.price || 0);
-
-                // Crear producto prepagado
-                await prisma.prepaidProduct.create({
-                    data: {
+                // Buscar si el producto ya existe
+                const existingProduct = await prisma.prepaidProduct.findFirst({
+                    where: {
                         accountId: Number(id),
-                        productId: item.productId,
-                        paid: item.quantity,
-                        consumed: 0
+                        productId: item.productId
                     }
                 });
+
+                if (existingProduct) {
+                    // Actualizar producto existente
+                    await prisma.prepaidProduct.update({
+                        where: { id: existingProduct.id },
+                        data: {
+                            paid: existingProduct.paid + item.quantity
+                        }
+                    });
+                } else {
+                    // Crear nuevo producto
+                    await prisma.prepaidProduct.create({
+                        data: {
+                            accountId: Number(id),
+                            productId: item.productId,
+                            paid: item.quantity,
+                            consumed: 0
+                        }
+                    });
+                }
 
                 // Actualizar stock
                 await prisma.product.update({
@@ -115,9 +128,13 @@ export const addPrepaidProducts = async (req: Request, res: Response) => {
                         }
                     }
                 });
+
+                const product = await prisma.product.findUnique({
+                    where: { id: item.productId }
+                });
+                totalAmount += item.quantity * (product?.price || 0);
             }
 
-            // Una sola transacción
             await prisma.accountTransaction.create({
                 data: {
                     accountId: Number(id),
@@ -211,43 +228,37 @@ export const addAccumulatedItems = async (req: Request, res: Response) => {
             return res.status(401).json({ error: 'User not authenticated' });
         }
 
-        const account = await prisma.account.findUnique({
-            where: { id: Number(id) },
-            include: {
-                transactions: true
-            }
-        });
-
-        if (!account || account.type !== 'ACCUMULATED' || account.status !== 'open') {
-            return res.status(400).json({ error: 'Invalid account' });
-        }
-
-        if (account.creditLimit) {
-            const totalAmount = account.transactions.reduce((sum: number, t: AccountTransaction) => sum + t.amount, 0);
-            const newItemsTotal = items.reduce((sum: number, item: TransactionItem) => sum + (item.quantity * item.price), 0);
-
-            if (totalAmount + newItemsTotal > account.creditLimit) {
-                return res.status(400).json({ error: 'Credit limit exceeded' });
-            }
-        }
-
-        const transaction = await prisma.accountTransaction.create({
-            data: {
-                accountId: Number(id),
-                amount: items.reduce((sum: number, item: TransactionItem) => sum + (item.quantity * item.price), 0),
-                type: 'debit',
-                userId: user.userId,
-                items: {
-                    create: items.map(item => ({
-                        productId: item.productId,
-                        quantity: item.quantity,
-                        price: item.price
-                    }))
+        await prisma.$transaction(async (prisma) => {
+            const transaction = await prisma.accountTransaction.create({
+                data: {
+                    accountId: Number(id),
+                    amount: items.reduce((sum, item) => sum + (item.quantity * item.price), 0),
+                    type: 'debit',
+                    userId: user.userId,
+                    items: {
+                        create: items.map(item => ({
+                            productId: item.productId,
+                            quantity: item.quantity,
+                            price: item.price
+                        }))
+                    }
                 }
-            }
-        });
+            });
 
-        res.json(transaction);
+            // Actualizar stock
+            for (const item of items) {
+                await prisma.product.update({
+                    where: { id: item.productId },
+                    data: {
+                        stock: {
+                            decrement: item.quantity
+                        }
+                    }
+                });
+            }
+
+            res.json(transaction);
+        });
     } catch (error) {
         console.error('Error adding accumulated items:', error);
         res.status(500).json({ error: 'Error adding accumulated items' });

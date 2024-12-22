@@ -20,16 +20,26 @@ def read_file_content(file_path):
             print(f"Error al leer el archivo {file_path}: {e}")
             return None
 
+def should_ignore_file(file_path):
+    # Lista de archivos específicos a ignorar
+    ignore_files = ['package-lock.json', 'README.md', 'export_project.py', 'full_project_source_code_v6.txt']
+    file_name = os.path.basename(file_path)
+    return file_name in ignore_files
+
 def export_project_files(root_dir, output_file, ignore_dirs):
     with open(output_file, 'w', encoding='utf-8') as f_out:
         for root, dirs, files in os.walk(root_dir):
             # Excluir directorios que no queremos recorrer
-            # Creamos una copia de dirs para evitar modificar la lista mientras la recorremos
             dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
             for file in files:
                 # Obtén la ruta completa del archivo
                 file_path = os.path.join(root, file)
+
+                # Verificar si el archivo debe ser ignorado
+                if should_ignore_file(file_path):
+                    print(f"Archivo ignorado: {file_path}")
+                    continue
 
                 # Si el archivo es de texto, lo procesamos
                 if is_text_file(file_path):
@@ -45,12 +55,12 @@ def export_project_files(root_dir, output_file, ignore_dirs):
                 else:
                     print(f"Archivo no de texto, ignorado: {file_path}")
 
-# Directorios a ignorar (puedes añadir los que necesites)
-ignore_dirs = ['node_modules', 'dist', 'build', 'out', '.git', '__pycache__', 'package-lock', 'backend\package-lock']
+# Directorios a ignorar
+ignore_dirs = ['node_modules', 'dist', 'build', 'out', '.git', '__pycache__']
 
 # Llamar a la función para exportar los archivos del proyecto
 root_dir = './'  # Ajusta según la ubicación de tu proyecto
-output_file = 'full_project_v4.txt'
+output_file = 'full_project_source_code_v6.txt'
 
 export_project_files(root_dir, output_file, ignore_dirs)
 

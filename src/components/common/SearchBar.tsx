@@ -1,6 +1,7 @@
 // src/components/common/SearchBar.tsx
 import React from 'react';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { t } from 'i18next';
 
 interface SearchBarProps {
     placeholder?: string;
@@ -9,7 +10,7 @@ interface SearchBarProps {
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({
-    placeholder = "Search...",
+    placeholder = t('common.search'),
     value,
     onChange
 }) => {
