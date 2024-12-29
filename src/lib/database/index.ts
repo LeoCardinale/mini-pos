@@ -1,21 +1,12 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { config } from '../../config';
-import { Product, Transaction, AccountTransaction } from '../../types';
+import { Product, Transaction, AccountTransaction, CashRegister, Currency, Wallet } from '../../types';
 import { SyncOperation } from '../../types/sync';
 
 type CreateProductData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
 type UpdateProductData = Partial<CreateProductData>;
 
 // Interfaces
-interface CashRegister {
-    id: number;
-    status: 'open' | 'closed';
-    initialAmount: number;
-    finalAmount?: number;
-    openedAt: Date;
-    closedAt?: Date;
-}
-
 interface SyncQueueItem {
     id: string;
     timestamp: number;
@@ -50,6 +41,14 @@ interface DBSchema {
         value: AccountTransaction;
         indexes: { 'by-account': number };
     };
+}
+
+interface AccountItemsMetadata {
+    amount?: number;
+    method?: string;
+    discount?: number;
+    note?: string;
+    currency?: Currency;
 }
 
 let db: IDBPDatabase<DBSchema>;
@@ -282,7 +281,8 @@ export const transactionOperations = {
             const response = await fetch(`${config.apiUrl}/transactions/${id}/cancel`, {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json'
                 }
             });
 
@@ -293,15 +293,25 @@ export const transactionOperations = {
 
             const updatedTransaction = await response.json();
 
-            // Si el backend acepta, actualizar en IndexedDB
+            // Actualizar en IndexedDB
             const db = await initDatabase();
-            await db.put('transactions', {
+            const tx = db.transaction('transactions', 'readwrite');
+            await tx.store.put({
                 ...updatedTransaction,
                 createdAt: new Date(updatedTransaction.createdAt)
             });
+            await tx.done;
 
-            // Forzar actualizaci贸n de productos
-            await productOperations.getAll();
+            // Actualizar stock
+            for (const item of updatedTransaction.items) {
+                const productTx = db.transaction('products', 'readwrite');
+                const product = await productTx.store.get(item.productId);
+                if (product) {
+                    product.stock += item.quantity;
+                    await productTx.store.put(product);
+                }
+                await productTx.done;
+            }
 
             return updatedTransaction;
         } catch (error) {
@@ -328,12 +338,7 @@ export const accountOperations = {
         userId: string,
         accountType: 'PREPAID' | 'ACCUMULATED',
         transactionType: 'debit' | 'credit',
-        metadata?: {
-            amount?: number;
-            method?: string;
-            discount?: number;
-            note?: string;
-        }
+        metadata?: AccountItemsMetadata
     ) {
         console.log('Starting accountOperations.addItems', { accountId, items, accountType, transactionType });
 
@@ -357,12 +362,12 @@ export const accountOperations = {
 
             // Crear transacción local
             const accountTx = db.transaction('accountTransactions', 'readwrite');
-            const amount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+            const amount = metadata?.amount || items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
 
             const accountTransaction: AccountTransaction = {
                 id: crypto.randomUUID(),
                 accountId,
-                amount: metadata?.amount || items.reduce((sum, item) => sum + (item.quantity * item.price), 0),
+                amount,
                 type: transactionType,
                 accountType,
                 createdAt: new Date(),
@@ -370,6 +375,8 @@ export const accountOperations = {
                 method: metadata?.method,
                 discount: metadata?.discount,
                 note: metadata?.note,
+                currency: metadata?.currency || 'USD',
+                wallet: (metadata?.method as Wallet) || 'CASH_USD',
                 items: items.map(item => ({
                     id: 0,
                     transactionId: '',
@@ -383,9 +390,9 @@ export const accountOperations = {
             await accountTx.done;
 
             // Encolar para sincronización
-            await enqueueSyncOperation({
+            await syncQueueOperations.addOperation({
                 type: 'create',
-                entity: 'transaction',
+                entity: 'accountTransaction',
                 data: JSON.stringify(accountTransaction),
                 deviceId: localStorage.getItem('deviceId') || 'unknown',
                 status: 'pending'

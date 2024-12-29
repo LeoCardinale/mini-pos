@@ -16,9 +16,6 @@ const CloseAccountConfirm: React.FC<CloseAccountConfirmProps> = ({ account, onCo
                 <h3 className="text-lg font-bold mb-4">{t('accounts.closeAccount')}</h3>
                 <p className="mb-6">
                     {t('accounts.confirmClose')}<br />
-                    <span className="text-sm text-gray-500">
-                        {t('common.actionUndone')}
-                    </span>
                 </p>
                 <div className="flex gap-3">
                     <button

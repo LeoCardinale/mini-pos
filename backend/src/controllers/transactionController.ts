@@ -23,10 +23,6 @@ export const cancelTransaction = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Transaction not found' });
         }
 
-        if (transaction.userId !== user.userId) {
-            return res.status(403).json({ error: 'Not authorized' });
-        }
-
         const updatedTransaction = await prisma.$transaction(async (prisma) => {
             // Actualizar stock de productos
             for (const item of transaction.items) {
@@ -38,10 +34,18 @@ export const cancelTransaction = async (req: Request, res: Response) => {
                 });
             }
 
-            // Marcar transacción como cancelada y retornar la transacción actualizada
+            // Eliminar registro de ventas
+            await prisma.salesRecord.deleteMany({
+                where: {
+                    sourceId: id.toString()
+                }
+            });
+
+            // Marcar transacción como cancelada
             return await prisma.transaction.update({
                 where: { id: Number(id) },
-                data: { status: 'cancelled' }
+                data: { status: 'cancelled' },
+                include: { items: true }
             });
         });
 
@@ -49,5 +53,34 @@ export const cancelTransaction = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error cancelling transaction:', error);
         res.status(500).json({ error: 'Error cancelling transaction' });
+    }
+};
+
+export const createTransaction = async (req: Request, res: Response) => {
+    try {
+        const transactionData = req.body;
+        const user = (req as AuthRequest).user;
+
+        if (!user) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
+
+        const transaction = await prisma.transaction.create({
+            data: {
+                ...transactionData,
+                userId: user.userId,
+                items: {
+                    create: transactionData.items
+                }
+            },
+            include: {
+                items: true
+            }
+        });
+
+        res.status(201).json(transaction);
+    } catch (error) {
+        console.error('Error creating transaction:', error);
+        res.status(500).json({ error: 'Error creating transaction' });
     }
 };

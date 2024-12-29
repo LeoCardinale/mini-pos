@@ -60,6 +60,8 @@ model Transaction {
     user          User             @relation(fields: [userId], references: [id])
     status        String           @default("active")
     items         TransactionItem[]
+    currency      String           @default("USD")   // "USD" | "BS"
+    wallet        String           @default("CASH_USD")  // "CASH_USD" | "CASH_BS" | "TRANSFER_USD" | "CUENTA_BS"
 }
 
 model TransactionItem {
@@ -75,11 +77,18 @@ model TransactionItem {
 model CashRegister {
     id            Int       @id @default(autoincrement())
     status        String    // 'open' | 'closed'
-    initialAmount Float
-    finalAmount   Float?
+    initialCashUSD     Float    @default(0)
+    initialCashBs      Float    @default(0)
+    initialTransferUSD Float    @default(0)
+    initialCuentaBs    Float    @default(0)
+    finalCashUSD       Float?
+    finalCashBs        Float?
+    finalTransferUSD   Float?
+    finalCuentaBs      Float?
+    dollarRate         Float    @default(0)
     openedAt      DateTime  @default(now())
     closedAt      DateTime?
-    deviceId      String    // Este campo debe ser requerido
+    deviceId      String    
     userId        String    
     user          User      @relation(fields: [userId], references: [id])
 }

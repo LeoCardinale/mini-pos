@@ -3,7 +3,7 @@ import { Account, PrepaidProduct, AccountTransaction, AccountTransactionItem } f
 import { useAuth } from '../../context/AuthContext';
 import PrepaidProductSelector from './PrepaidProductSelector';
 import CloseAccountConfirm from './CloseAccountConfirm';
-import { initDatabase, accountOperations } from '../../lib/database';
+import { initDatabase, accountOperations, cashRegisterOperations } from '../../lib/database';
 import { useTranslation } from 'react-i18next';
 
 interface PrepaidAccountDetailProps {
@@ -19,12 +19,22 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
     const [showProductSelector, setShowProductSelector] = useState(false);
     const [showCloseConfirm, setShowCloseConfirm] = useState(false);
     const { t } = useTranslation();
+    const [registerStatus, setRegisterStatus] = useState<'open' | 'closed' | null>(null);
 
     // Mantenemos este cálculo igual
     const totalPaid = products.reduce((sum, p) => {
         const price = p.product?.price ?? 0;
         return sum + (p.paid * price);
     }, 0);
+
+    useEffect(() => {
+        const checkRegister = async () => {
+            if (!user) return;
+            const register = await cashRegisterOperations.getCurrent(user.id);
+            setRegisterStatus(register?.status || null);
+        };
+        checkRegister();
+    }, [user]);
 
     useEffect(() => {
         loadTransactions();
@@ -52,7 +62,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
 
                         if (!productMap.has(item.productId)) {
                             productMap.set(item.productId, {
-                                id: Date.now(),
+                                id: item.productId,
                                 accountId: account.id,
                                 productId: item.productId,
                                 paid: 0,
@@ -141,22 +151,33 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
             </div>
 
             <div className="mb-4 space-x-4">
-                {account.status === 'open' && (
-                    <button
-                        onClick={() => setShowProductSelector(true)}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                    >
-                        {t('accounts.addItems')}
-                    </button>
-                )}
-                {account.status === 'open' && !products.some(p => p.paid > p.consumed) && (
-                    <button
-                        onClick={handleCloseAccount}
-                        className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                    >
-                        {t('accounts.closeAccount')}
-                    </button>
-                )}
+                <button
+                    onClick={() => {
+                        if (registerStatus !== 'open') {
+                            alert('Debe abrir caja para esta operación');
+                            return;
+                        }
+                        setShowProductSelector(true);
+                    }}
+                    disabled={account.status !== 'open'}
+                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {t('accounts.addItems')}
+                </button>
+
+                <button
+                    onClick={() => {
+                        if (registerStatus !== 'open') {
+                            alert('Debe abrir caja para esta operación');
+                            return;
+                        }
+                        handleCloseAccount;
+                    }}
+                    disabled={account.status !== 'open' || products.some(p => p.paid > p.consumed)}
+                    className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {t('accounts.closeAccount')}
+                </button>
             </div>
 
             {showCloseConfirm && (

@@ -1,11 +1,16 @@
 // src/pages/register/RegisterControl.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, CashRegister, PaymentMethod } from '../../types';
 import { cashRegisterOperations, transactionOperations } from '../../lib/database';
 import SalesSummary from '../../components/register/SalesSummary';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { WalletAmounts } from '../../types';
+
+interface RegisterFormData extends WalletAmounts {
+    dollarRate: number;
+}
 
 
 const RegisterControl = () => {
@@ -13,10 +18,21 @@ const RegisterControl = () => {
     const [error, setError] = useState<string | null>(null);
     const [currentRegister, setCurrentRegister] = useState<CashRegister | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [initialAmount, setInitialAmount] = useState('');
-    const [finalAmount, setFinalAmount] = useState('');
+    const [finalAmounts, setFinalAmounts] = useState<WalletAmounts>({
+        cashUSD: 0,
+        cashBs: 0,
+        transferUSD: 0,
+        cuentaBs: 0
+    });
     const { user } = useAuth();
     const { t } = useTranslation();
+    const [formData, setFormData] = useState<RegisterFormData>({
+        cashUSD: 0,
+        cashBs: 0,
+        transferUSD: 0,
+        cuentaBs: 0,
+        dollarRate: 0
+    });
 
     useEffect(() => {
         checkRegisterStatus();
@@ -52,12 +68,6 @@ const RegisterControl = () => {
     const handleOpenRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const amount = parseFloat(initialAmount);
-            if (isNaN(amount) || amount < 0) {
-                setError(t('validation.invalidAmount'));
-                return;
-            }
-
             if (!user) {
                 setError('User not authenticated');
                 return;
@@ -66,13 +76,24 @@ const RegisterControl = () => {
             const register: Omit<CashRegister, 'id'> = {
                 status: 'open',
                 openedAt: new Date(),
-                initialAmount: amount,
+                initialCashUSD: formData.cashUSD,
+                initialCashBs: formData.cashBs,
+                initialTransferUSD: formData.transferUSD,
+                initialCuentaBs: formData.cuentaBs,
+                dollarRate: formData.dollarRate,
                 userId: user.id,
                 deviceId: localStorage.getItem('deviceId') || 'unknown'
             };
 
             await cashRegisterOperations.create(register);
-            setInitialAmount('');
+            // Reiniciar formulario
+            setFormData({
+                cashUSD: 0,
+                cashBs: 0,
+                transferUSD: 0,
+                cuentaBs: 0,
+                dollarRate: 0
+            });
             checkRegisterStatus();
         } catch (err) {
             setError('Error opening register');
@@ -81,29 +102,38 @@ const RegisterControl = () => {
 
     const handleCloseRegister = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!window.confirm('¿Está seguro que desea cerrar la caja? Esta acción no se puede deshacer.')) {
+            return;
+        }
         if (!currentRegister) return;
 
         try {
-            const amount = parseFloat(finalAmount);
-            if (isNaN(amount) || amount < 0) {
-                setError(t('validation.invalidAmount'));
+            // Validar que todos los montos sean válidos
+            if (Object.values(finalAmounts).some(amount => amount < 0)) {
+                setError('Please enter valid amounts');
                 return;
             }
 
-            console.log('Cerrando caja...', currentRegister.id);
-
-            // Actualizar estado de la caja
             await cashRegisterOperations.update(currentRegister.id, {
                 status: 'closed',
                 closedAt: new Date(),
-                finalAmount: amount
+                finalCashUSD: finalAmounts.cashUSD,
+                finalCashBs: finalAmounts.cashBs,
+                finalTransferUSD: finalAmounts.transferUSD,
+                finalCuentaBs: finalAmounts.cuentaBs
             });
 
             console.log('Caja cerrada, generando reporte...');
             await generateReport();
 
             console.log('Limpiando estado...');
-            setFinalAmount('');
+            setFinalAmounts({
+                cashUSD: 0,
+                cashBs: 0,
+                transferUSD: 0,
+                cuentaBs: 0
+            });
             setTransactions([]);
             await checkRegisterStatus();
 
@@ -118,52 +148,75 @@ const RegisterControl = () => {
         if (!currentRegister || !user) return;
 
         const activeTransactions = transactions.filter(t => t.status === 'active');
-        const totalSales = activeTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+        // Calcular totales por wallet
+        const totalsByWallet = activeTransactions.reduce((acc, t) => ({
+            cashUSD: acc.cashUSD + (t.wallet === 'CASH_USD' ? t.amount : 0),
+            cashBs: acc.cashBs + (t.wallet === 'CASH_BS' ? t.amount : 0),
+            transferUSD: acc.transferUSD + (t.wallet === 'TRANSFER_USD' ? t.amount : 0),
+            cuentaBs: acc.cuentaBs + (t.wallet === 'CUENTA_BS' ? t.amount : 0)
+        }), {
+            cashUSD: 0,
+            cashBs: 0,
+            transferUSD: 0,
+            cuentaBs: 0
+        });
+
         const totalDiscounts = activeTransactions.reduce((sum, t) => sum + t.discount, 0);
-        const expectedAmount = currentRegister.initialAmount + totalSales;
-        const difference = parseFloat(finalAmount) - expectedAmount;
 
         const rows = [
             ['Reporte de Caja'],
             ['Usuario', user.name],
             ['Fecha', new Date().toLocaleDateString()],
-            ['Hora de Apertura', currentRegister.openedAt.toLocaleString()],
-            ['Hora de Cierre', new Date().toLocaleString()],
-            ['Monto Inicial', `$${currentRegister.initialAmount.toFixed(2)}`],
-            ['Ventas Totales', `$${totalSales.toFixed(2)}`],
-            ['Descuentos Totales', `$${totalDiscounts.toFixed(2)}`],
-            ['Monto Final', `$${finalAmount}`],
-            ['Monto Esperado', `$${expectedAmount.toFixed(2)}`],
-            ['Diferencia', `$${difference.toFixed(2)}`],
+            ['Hora Apertura', currentRegister.openedAt.toLocaleString()],
+            ['Hora Cierre', currentRegister.closedAt?.toLocaleString() || '-'],
+            ['Tasa Dólar', currentRegister.dollarRate.toString()],
             [''],
-            ['Detalles de Transacciones'],
-            ['Hora', 'Monto', 'Descuento', 'Forma de Pago', 'Cliente', 'Estado']
+            ['Montos Iniciales'],
+            ['Efectivo USD', `$${currentRegister.initialCashUSD.toFixed(2)}`],
+            ['Efectivo Bs', `Bs.${currentRegister.initialCashBs.toFixed(2)}`],
+            ['Transferencia USD', `$${currentRegister.initialTransferUSD.toFixed(2)}`],
+            ['Cuenta Bs', `Bs.${currentRegister.initialCuentaBs.toFixed(2)}`],
+            [''],
+            ['Montos Finales'],
+            ['Efectivo USD', `$${currentRegister.finalCashUSD?.toFixed(2) || '-'}`],
+            ['Efectivo Bs', `Bs.${currentRegister.finalCashBs?.toFixed(2) || '-'}`],
+            ['Transferencia USD', `$${currentRegister.finalTransferUSD?.toFixed(2) || '-'}`],
+            ['Cuenta Bs', `Bs.${currentRegister.finalCuentaBs?.toFixed(2) || '-'}`],
+            [''],
+            ['Ventas por Método de Pago'],
+            ['Efectivo USD', `$${totalsByWallet.cashUSD.toFixed(2)}`],
+            ['Efectivo Bs', `Bs.${totalsByWallet.cashBs.toFixed(2)}`],
+            ['Transferencia USD', `$${totalsByWallet.transferUSD.toFixed(2)}`],
+            ['Cuenta Bs', `Bs.${totalsByWallet.cuentaBs.toFixed(2)}`],
+            ['Total Descuentos', `$${totalDiscounts.toFixed(2)}`],
+            [''],
+            ['Detalle de Transacciones'],
+            ['Hora', 'Monto', 'Moneda', 'Método de Pago', 'Descuento', 'Cliente', 'Estado']
         ];
 
+        // Agregar transacciones al reporte
         transactions.forEach(t => {
             rows.push([
-                `"${t.createdAt.toLocaleString()}"`,
-                `$${t.amount.toFixed(2)}`,
-                `$${t.discount.toFixed(2)}`,
-                t.type,
+                t.createdAt.toLocaleString(),
+                t.amount.toFixed(2),
+                t.currency,
+                t.wallet,
+                t.discount.toFixed(2),
                 t.customerName || '-',
                 t.status
             ]);
         });
 
-        const csvContent = rows.map(row =>
-            row.map(cell =>
-                typeof cell === 'string' && cell.includes(',')
-                    ? `"${cell}"`
-                    : cell
-            ).join(',')
-        ).join('\n');
+        const csvContent = rows
+            .map(row => row.map(cell => `"${cell}"`).join(','))
+            .join('\n');
 
         const blob = new Blob(['\ufeff' + csvContent], {
             type: 'text/csv;charset=utf-8'
         });
 
-        saveAs(blob, `register-report-${new Date().toISOString().split('T')[0]}.csv`);
+        saveAs(blob, `reporte_caja_${new Date().toISOString().split('T')[0]}.csv`);
     };
 
     const handleCancelTransaction = async (transactionId: number) => {
@@ -176,11 +229,68 @@ const RegisterControl = () => {
         }
     };
 
+
+    const DollarRateInput: React.FC = () => {
+        const [isEditing, setIsEditing] = useState(false);
+        const [tempRate, setTempRate] = useState(currentRegister?.dollarRate || 0);
+        const inputRef = useRef<HTMLInputElement>(null);
+
+        useEffect(() => {
+            if (isEditing && inputRef.current) {
+                inputRef.current.focus();
+            }
+        }, [isEditing]);
+
+        const handleUpdateRate = async () => {
+            try {
+                if (!currentRegister) return;
+                await cashRegisterOperations.update(currentRegister.id, {
+                    dollarRate: tempRate
+                });
+                setIsEditing(false);
+                checkRegisterStatus();
+            } catch (err) {
+                setError('Error updating dollar rate');
+            }
+        };
+
+        return (
+            <div className="flex items-center gap-2 bg-white p-2 rounded-lg shadow">
+                <label className="text-sm font-medium text-gray-700">
+                    Tasa Dólar:
+                </label>
+                <input
+                    ref={inputRef}
+                    type="number"
+                    value={tempRate}
+                    onChange={(e) => setTempRate(parseFloat(e.target.value) || 0)}
+                    disabled={!isEditing}
+                    step="0.01"
+                    min="0"
+                    className="w-24 rounded-md border-gray-300"
+                />
+                <button
+                    onClick={() => isEditing ? handleUpdateRate() : setIsEditing(true)}
+                    className={`px-3 py-1 rounded-md ${isEditing
+                        ? 'bg-green-600 text-white hover:bg-green-700'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    type="button"
+                >
+                    {isEditing ? 'Aceptar' : 'Editar'}
+                </button>
+            </div>
+        );
+    };
+
     if (isLoading) return <div>Loading...</div>;
 
     return (
         <div className="max-w-7xl mx-auto space-y-6">
-            <h1 className="text-2xl font-bold">{t('register.title')}</h1>
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold">Control de Caja</h1>
+                {currentRegister && <DollarRateInput />}
+            </div>
 
             {error && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-md">
@@ -210,52 +320,183 @@ const RegisterControl = () => {
 
                         <SalesSummary
                             transactions={transactions}
-                            initialAmount={currentRegister.initialAmount}
                             currentRegister={currentRegister}
                             onCancelTransaction={handleCancelTransaction}
                         />
 
                         <form onSubmit={handleCloseRegister} className="mt-6">
-                            <div className="max-w-xs">
-                                <label className="block text-sm font-medium text-gray-700">
-                                    {t('register.finalAmount')}
-                                </label>
-                                <input
-                                    type="number"
-                                    value={finalAmount}
-                                    onChange={(e) => setFinalAmount(e.target.value)}
-                                    step="0.01"
-                                    min="0"
-                                    required
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Monto Final Cash USD
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={finalAmounts.cashUSD}
+                                        onChange={(e) => setFinalAmounts(prev => ({
+                                            ...prev,
+                                            cashUSD: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Monto Final Transfer USD
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={finalAmounts.transferUSD}
+                                        onChange={(e) => setFinalAmounts(prev => ({
+                                            ...prev,
+                                            transferUSD: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Monto Final Cash Bs
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={finalAmounts.cashBs}
+                                        onChange={(e) => setFinalAmounts(prev => ({
+                                            ...prev,
+                                            cashBs: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Monto Final Cuenta Bs
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={finalAmounts.cuentaBs}
+                                        onChange={(e) => setFinalAmounts(prev => ({
+                                            ...prev,
+                                            cuentaBs: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
                             </div>
                             <button
                                 type="submit"
                                 className="mt-4 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
                             >
-                                {t('register.closeRegister')}
+                                Cerrar Caja
                             </button>
                         </form>
                     </div>
                 </div>
             ) : (
                 <form onSubmit={handleOpenRegister} className="bg-white p-6 rounded-lg shadow max-w-md">
-                    <h2 className="text-lg font-medium mb-4">Open Register</h2>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            {t('register.initialAmount')}
-                        </label>
-                        <input
-                            type="number"
-                            value={initialAmount}
-                            onChange={(e) => setInitialAmount(e.target.value)}
-                            step="0.01"
-                            min="0"
-                            required
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
+                    <h2 className="text-lg font-medium mb-4">{t('register.openRegister')}</h2>
+
+                    <div className="space-y-4">
+
+
+                        {/* USD Wallets */}
+                        <div className="border-t pt-4">
+                            <h3 className="font-medium mb-2">Cuentas USD</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Efectivo USD
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.cashUSD}
+                                        onChange={(e) => setFormData(prev => ({
+                                            ...prev,
+                                            cashUSD: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Cuenta Zelle USD
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.transferUSD}
+                                        onChange={(e) => setFormData(prev => ({
+                                            ...prev,
+                                            transferUSD: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* BS Wallets */}
+                        <div className="border-t pt-4">
+                            <h3 className="font-medium mb-2">Cuentas Bs.</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Efectivo Bs
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.cashBs}
+                                        onChange={(e) => setFormData(prev => ({
+                                            ...prev,
+                                            cashBs: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Cuenta Bancaria Bs
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.cuentaBs}
+                                        onChange={(e) => setFormData(prev => ({
+                                            ...prev,
+                                            cuentaBs: parseFloat(e.target.value) || 0
+                                        }))}
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
                     <button
                         type="submit"
                         className="mt-4 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"

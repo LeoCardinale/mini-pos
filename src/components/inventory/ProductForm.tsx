@@ -152,25 +152,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
         };
     }, []);
 
-    const loadSuppliers = async () => {
-        try {
-            const response = await fetch(`${config.apiUrl}/suppliers/active`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to load suppliers');
-            }
-
-            const data = await response.json();
-            setSuppliers(data);
-        } catch (err) {
-            setError('Error loading suppliers');
-        }
-    };
-
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
         const newValue = type === 'checkbox'
@@ -262,7 +243,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto p-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700">{t('common.name')}</label>
                 <input

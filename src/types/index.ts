@@ -29,30 +29,40 @@ export interface Transaction {
     id: number;
     amount: number;
     discount: number;
-    type: PaymentMethod;
+    type: string;    // Podríamos cambiar esto después
+    deviceId: string;
     createdAt: Date;
     customerName?: string;
     userId: string;
-    deviceId: string;
-    status: 'active' | 'cancelled';
+    status: string;
     items: TransactionItem[];
+    currency: Currency;
+    wallet: Wallet;
 }
 
 export interface CashRegister {
     id: number;
     status: RegisterStatus;
-    initialAmount: number;
-    finalAmount?: number;
+    initialCashUSD: number;
+    initialCashBs: number;
+    initialTransferUSD: number;
+    initialCuentaBs: number;
+    finalCashUSD?: number;
+    finalCashBs?: number;
+    finalTransferUSD?: number;
+    finalCuentaBs?: number;
+    dollarRate: number;
     openedAt: Date;
     closedAt?: Date;
     deviceId: string;
     userId: string;
 }
-
 // Tipos para sincronización
 export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord';
 export type SyncOperationType = 'create' | 'update' | 'delete';
 export type SyncStatus = 'pending' | 'completed' | 'failed';
+export type Currency = "USD" | "BS";
+export type Wallet = "CASH_USD" | "CASH_BS" | "TRANSFER_USD" | "CUENTA_BS";
 
 export enum AccountType {
     PREPAID = 'PREPAID',
@@ -92,6 +102,8 @@ export interface AccountTransaction {
     method?: string;
     note?: string;
     discount?: number;
+    currency: Currency;
+    wallet: Wallet;
 }
 
 export interface AccountTransactionItem {
@@ -101,4 +113,11 @@ export interface AccountTransactionItem {
     quantity: number;
     price: number;
     product?: Product;
+}
+
+export interface WalletAmounts {
+    cashUSD: number;
+    cashBs: number;
+    transferUSD: number;
+    cuentaBs: number;
 }

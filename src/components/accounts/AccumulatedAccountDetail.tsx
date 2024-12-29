@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Account, AccountTransaction, Product, AccountTransactionItem } from '../../types';
+import { Account, AccountTransaction, AccountTransactionItem, Currency, Wallet, CashRegister, Transaction } from '../../types';
 import { config } from '../../config';
 import AccountItemsSelector from './AccountItemsSelector';
 import CloseAccountConfirm from './CloseAccountConfirm';
 import { accountOperations } from '../../lib/database';
-import { initDatabase } from '../../lib/database';
+import { initDatabase, cashRegisterOperations, transactionOperations } from '../../lib/database';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import CheckoutModal from '../pos/CheckoutModal';
 
 type PaymentMethod = 'cash' | 'card' | 'transfer';
 
@@ -28,23 +29,36 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const [paymentAmount, setPaymentAmount] = useState('');
-    const [showAddItemsModal, setShowAddItemsModal] = useState(false);
-    const [newItems, setNewItems] = useState<Array<{ productId: number; quantity: number; price: number }>>([]);
-    const [products, setProducts] = useState<Array<Product>>([]);
+    //const [paymentAmount, setPaymentAmount] = useState('');
     const [showItemSelector, setShowItemSelector] = useState(false);
-
-    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-    const [paymentNote, setPaymentNote] = useState('');
-    const [discount, setDiscount] = useState(0);
+    //const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+    //const [paymentNote, setPaymentNote] = useState('');
+    //const [discount, setDiscount] = useState(0);
     const [showCloseConfirm, setShowCloseConfirm] = useState(false);
     const { user } = useAuth();
     const { t } = useTranslation();
+    const [currentRegister, setCurrentRegister] = useState<CashRegister | null>(null);
+
+    const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
 
     useEffect(() => {
         loadTransactions();
     }, [account.id]);
+
+    const checkCurrentRegister = async () => {
+        try {
+            if (!user) return;
+            const register = await cashRegisterOperations.getCurrent(user.id);
+            setCurrentRegister(register);
+        } catch (err) {
+            setError('Error checking register status');
+        }
+    };
+
+    useEffect(() => {
+        checkCurrentRegister();
+    }, [user]);
 
     const handleAddItems = async (items: Array<{ productId: number; quantity: number; price: number }>) => {
         try {
@@ -62,6 +76,9 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
 
     const loadTransactions = async () => {
         try {
+            const register = await cashRegisterOperations.getCurrent(user?.id);
+            setCurrentRegister(register);
+
             const db = await initDatabase();
 
             // Obtener transacciones
@@ -103,12 +120,30 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
 
             // Calcular balance
             const totalDebit = formattedTransactions
-                .filter(t => t.type === 'debit')
-                .reduce((sum, t) => sum + t.amount, 0);
+                .filter(taux => taux.type === 'debit')
+                .reduce((sum: number, taux) => {
+                    if (!register) {
+                        return sum + (taux.currency === 'USD' ? taux.amount : 0);
+                    }
+
+                    const amountInUSD = taux.currency === 'BS'
+                        ? taux.amount / register.dollarRate
+                        : taux.amount;
+                    return sum + amountInUSD;
+                }, 0);
 
             const totalCredits = formattedTransactions
                 .filter(t => t.type === 'credit')
-                .reduce((sum, t) => sum + t.amount + (t.discount || 0), 0);
+                .reduce((sum: number, t) => {
+                    if (!register) {
+                        return sum + (t.currency === 'USD' ? t.amount : 0);
+                    }
+
+                    const amountInUSD = t.currency === 'BS'
+                        ? t.amount / register.dollarRate
+                        : t.amount;
+                    return sum + amountInUSD;
+                }, 0);
 
             setBalance(parseFloat((totalDebit - totalCredits).toFixed(2)));
         } catch (err) {
@@ -119,44 +154,62 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
         }
     };
 
-    const handleMakePayment = async () => {
-        setError(null);
+    const handlePaymentClick = () => {
+        if (!currentRegister) {
+            setError('Please open the register first');
+            return;
+        }
+        setShowCheckoutModal(true);
+    };
+
+    const handlePaymentComplete = async (data: {
+        paymentMethod: Wallet;
+        customerName: string;
+        discount: number;
+        currency: Currency;
+    }) => {
         try {
-            const amount = parseFloat(paymentAmount);
-            if (isNaN(amount) || amount <= 0) {
-                setError('Please enter a valid amount');
-                return;
-            }
+            if (!user || !currentRegister) throw new Error('Invalid state');
 
-            if (amount > (balance - discount)) {
-                setError('Payment amount cannot exceed pending balance');
-                return;
-            }
+            // El balance siempre debe estar en USD
+            const transactionAmount = data.currency === 'BS'
+                ? balance * currentRegister.dollarRate
+                : balance;
 
-            if (!user) {
-                throw new Error('User not authenticated');
-            }
+            // Crear transacción POS para la caja
+            const transaction: Omit<Transaction, 'id'> = {
+                amount: transactionAmount,
+                discount: data.discount,
+                type: data.paymentMethod,
+                currency: data.currency,
+                wallet: data.paymentMethod,
+                createdAt: new Date(),
+                userId: user.id,
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                customerName: `Accumulated: ${account.customerName}`,
+                status: 'active',
+                items: [] // Pagos no tienen items
+            };
+
+            // Crear transacción POS
+            await transactionOperations.create(transaction);
 
             await accountOperations.addItems(
                 account.id,
-                [], // No hay items en un pago
+                [],
                 user.id,
                 'ACCUMULATED',
                 'credit',
                 {
-                    amount,
-                    method: paymentMethod,
-                    discount,
-                    note: paymentNote || undefined
+                    amount: transactionAmount,
+                    method: data.paymentMethod,
+                    discount: data.discount,
+                    currency: data.currency,
+                    note: data.customerName
                 }
             );
 
-            setShowPaymentModal(false);
-            setPaymentAmount('');
-            setPaymentMethod('cash');
-            setPaymentNote('');
-            setDiscount(0);
-            setError(null);
+            setShowCheckoutModal(false);
             await loadTransactions();
             onUpdate();
         } catch (err) {
@@ -231,30 +284,48 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
             </div>
 
             <div className="mb-4 space-x-4">
-                {account.status === 'open' && balance > 0 && (
-                    <button
-                        onClick={() => setShowPaymentModal(true)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                    >
-                        {t('accounts.makePayment')}
-                    </button>
-                )}
-                {account.status === 'open' && (
-                    <button
-                        onClick={() => setShowItemSelector(true)}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                    >
-                        {t('accounts.addItems')}
-                    </button>
-                )}
-                {account.status === 'open' && Math.abs(balance) < 0.01 && (
-                    <button
-                        onClick={handleCloseAccount}
-                        className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                    >
-                        {t('accounts.closeAccount')}
-                    </button>
-                )}
+                <button
+                    onClick={() => {
+                        if (!currentRegister || currentRegister.status !== 'open') {
+                            alert('Debe abrir caja para esta operación');
+                            return;
+                        }
+                        handlePaymentClick;
+                    }}
+                    disabled={account.status !== 'open' || balance <= 0}
+                    className={`bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                    {t('accounts.makePayment')}
+                </button>
+
+                <button
+                    onClick={() => {
+                        if (!currentRegister || currentRegister.status !== 'open') {
+                            alert('Debe abrir caja para esta operación');
+                            return;
+                        }
+                        setShowItemSelector(true);
+                    }}
+                    disabled={account.status !== 'open'}
+                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {t('accounts.addItems')}
+                </button>
+
+                <button
+                    onClick={() => {
+                        if (!currentRegister || currentRegister.status !== 'open') {
+                            alert('Debe abrir caja para esta operación');
+                            return;
+                        }
+                        handleCloseAccount;
+                    }}
+                    disabled={account.status !== 'open' || Math.abs(balance) >= 0.01}
+                    className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {t('accounts.closeAccount')}
+                </button>
+
                 <button
                     onClick={handleDownloadReport}
                     className="bg-gray-100 text-gray-700 px-4 py-2 rounded hover:bg-gray-200"
@@ -312,7 +383,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <span className={transaction.type === 'debit' ? 'text-red-600' : 'text-green-600'}>
-                                        ${transaction.amount.toFixed(2)}
+                                        {transaction.currency === 'USD' ? '$' : 'Bs.'} {transaction.amount.toFixed(2)}
                                     </span>
                                 </td>
                             </tr>
@@ -335,139 +406,15 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
             )}
 
             {/* Modal de Pago */}
-            {showPaymentModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h3 className="text-lg font-bold mb-4">{t('accounts.makePayment')}</h3>
-
-                        {/* Montos */}
-                        <div className="space-y-4 mb-6">
-                            <div className="flex justify-between">
-                                <span className="font-medium">{t('accounts.pending')}:</span>
-                                <span>${balance.toFixed(2)}</span>
-                            </div>
-
-                            {/* Descuento */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    {t('common.discount')}
-                                </label>
-                                <input
-                                    type="number"
-                                    value={discount}
-                                    onChange={(e) => {
-                                        const value = Math.min(balance, Math.max(0, parseFloat(e.target.value) || 0));
-                                        setDiscount(value);
-                                    }}
-                                    className="w-full px-3 py-2 border rounded-md"
-                                    min="0"
-                                    max={balance}
-                                />
-                            </div>
-
-                            <div className="flex justify-between text-lg font-bold">
-                                <span>Total:</span>
-                                <span>${(balance - discount).toFixed(2)}</span>
-                            </div>
-
-                            {/* Monto a pagar */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    {t('common.amountToPay')}:
-                                </label>
-                                <input
-                                    type="number"
-                                    value={paymentAmount}
-                                    onChange={(e) => setPaymentAmount(e.target.value)}
-                                    className="w-full px-3 py-2 border rounded-md"
-                                    min="0"
-                                    max={balance - discount}
-                                />
-                            </div>
-
-                            {/* Metodo de pago */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    {t('pos.paymentMethod')}
-                                </label>
-                                <div className="space-y-2">
-                                    <label className="flex items-center">
-                                        <input
-                                            type="radio"
-                                            name="paymentMethod"
-                                            value="cash"
-                                            checked={paymentMethod === 'cash'}
-                                            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                                            className="mr-2"
-                                        />
-                                        {t('pos.cash')}
-                                    </label>
-                                    <label className="flex items-center">
-                                        <input
-                                            type="radio"
-                                            name="paymentMethod"
-                                            value="card"
-                                            checked={paymentMethod === 'card'}
-                                            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                                            className="mr-2"
-                                        />
-                                        {t('pos.card')}
-                                    </label>
-                                    <label className="flex items-center">
-                                        <input
-                                            type="radio"
-                                            name="paymentMethod"
-                                            value="transfer"
-                                            checked={paymentMethod === 'transfer'}
-                                            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                                            className="mr-2"
-                                        />
-                                        {t('pos.transfer')}
-                                    </label>
-                                </div>
-                            </div>
-
-                            {/* Nota de pago */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    {t('accounts.paymentNote')}
-                                </label>
-                                <input
-                                    type="text"
-                                    value={paymentNote}
-                                    onChange={(e) => setPaymentNote(e.target.value)}
-                                    className="w-full px-3 py-2 border rounded-md"
-                                />
-                            </div>
-                        </div>
-
-                        {error && (
-                            <div className="text-red-600 text-sm mb-4">{error}</div>
-                        )}
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={handleMakePayment}
-                                className="flex-1 bg-green-600 text-white py-2 rounded-md hover:bg-green-700"
-                            >
-                                {t('common.confirm')}
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setShowPaymentModal(false);
-                                    setPaymentAmount('');
-                                    setPaymentMethod('cash');
-                                    setPaymentNote('');
-                                    setDiscount(0);
-                                    setError(null);
-                                }}
-                                className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-md hover:bg-gray-200"
-                            >
-                                {t('common.cancel')}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {showCheckoutModal && currentRegister && (
+                <CheckoutModal
+                    total={balance}
+                    discount={0}
+                    dollarRate={currentRegister.dollarRate}
+                    onComplete={handlePaymentComplete}
+                    onCancel={() => setShowCheckoutModal(false)}
+                    context="account"
+                />
             )}
         </div>
     );

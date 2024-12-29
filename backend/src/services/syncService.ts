@@ -33,7 +33,7 @@ class SyncService {
                 console.log(`Processing operation: ${operation.type} ${operation.entity}`, operation);
                 console.log('Processing operation_2:', operation.type, operation.entity, operation.data);
 
-                // Verificar si la operaci贸n ya fue procesada
+                // Verificar si la operacion ya fue procesada
                 const existingOperation = await prisma.syncOperation.findUnique({
                     where: { id: operation.id }
                 });
@@ -49,7 +49,7 @@ class SyncService {
                     timestamp: BigInt(operation.timestamp)
                 };
 
-                // Primero guardar el registro de la operaci贸n como 'pending'
+                // Primero guardar el registro de la operacion como 'pending'
                 await prisma.syncOperation.create({
                     data: {
                         id: syncOp.id,
@@ -131,7 +131,7 @@ class SyncService {
     }
 
     private async applyProductOperation(type: string, data: any): Promise<void> {
-        // Remover campos que no est谩n en el esquema
+        // Remover campos que no estan en el esquema
         const { lastUpdated, ...productData } = data;
 
         switch (type) {
@@ -241,6 +241,30 @@ class SyncService {
                             accountType,
                             prisma
                         );
+                    }
+                });
+            } else {
+                // Manejar transacciones POS - solo crear la transacción
+                console.log('Processing POS transaction', data);
+                await prisma.transaction.create({
+                    data: {
+                        amount: data.amount,
+                        discount: data.discount,
+                        type: data.type,
+                        createdAt: new Date(data.createdAt),
+                        customerName: data.customerName,
+                        userId: data.userId,
+                        deviceId: data.deviceId,
+                        status: data.status,
+                        currency: data.currency || 'USD',
+                        wallet: data.wallet || 'CASH_USD',
+                        items: {
+                            create: data.items.map((item: any) => ({
+                                productId: item.productId,
+                                quantity: item.quantity,
+                                price: item.price
+                            }))
+                        }
                     }
                 });
             }

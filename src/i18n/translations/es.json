@@ -35,7 +35,14 @@
         "discount": "Descuento",
         "amountToPay": "Monto a Pagar",
         "type": "Tipo",
-        "cancelled": "Cancelado"
+        "cancelled": "Cancelado",
+        "all": "Todos",
+        "time": "Hora",
+        "payment": "Pago",
+        "product": "Producto",
+        "id": "ID",
+        "complete": "Completar",
+        "wallet": "Billetera"
     },
     "nav": {
         "pos": "TPV",
@@ -106,7 +113,12 @@
         "salesSummary": "Resumen de Ventas",
         "totalSales": "Ventas Totales",
         "byPaymentMethod": "Ventas por Método de Pago",
-        "recentTransactions": "Transacciones Recientes"
+        "recentTransactions": "Transacciones Recientes",
+        "dollarRate": "Tasa Dólar",
+        "initialAmounts": "Montos Iniciales",
+        "finalAmounts": "Montos Finales",
+        "salesByWallet": "Ventas por Método de Pago",
+        "totalDiscounts": "Total Descuentos"
     },
     "accounts": {
         "title": "Cuentas",
@@ -130,7 +142,12 @@
         "selectedItems": "Items Seleccionados",
         "confirmClose": "¿Está seguro que desea cerrar esta cuenta?",
         "totalPaid": "Total Pagado",
-        "openedAt": "Abierta el"
+        "openedAt": "Abierta el",
+        "available": "Disponible",
+        "consume": "Consumir",
+        "consumed": "Consumido",
+        "paid": "Pagado",
+        "customerName": "Nombre del Cliente"
     },
     "suppliers": {
         "title": "Proveedores",
@@ -142,7 +159,8 @@
         "contact": "Persona de Contacto",
         "phone": "Teléfono",
         "taxId": "RIF/NIF",
-        "address": "Dirección"
+        "address": "Dirección",
+        "titleAdd": "Agregar Proveedor"
     },
     "sales": {
         "title": "Reporte de Ventas",
@@ -155,7 +173,8 @@
         "exportCsv": "Exportar a CSV",
         "sourcePos": "TPV",
         "sourceAccumulated": "Acumulada",
-        "sourcePrepaid": "Prepago"
+        "sourcePrepaid": "Prepago",
+        "totalSales": "Ventas Totales"
     },
     "confirmations": {
         "deleteProduct": "¿Está seguro que desea eliminar este producto?",
@@ -199,5 +218,15 @@
         "initializing": "Inicializando cámara...",
         "takePhoto": "Tomar Foto",
         "capture": "Capturar"
+    },
+    "wallet": {
+        "cashUSD": "Efectivo USD",
+        "cashBs": "Efectivo Bs.",
+        "transferUSD": "Transferencia USD",
+        "cuentaBs": "Cuenta Bs."
+    },
+    "currency": {
+        "usd": "USD",
+        "bs": "Bs."
     }
 }

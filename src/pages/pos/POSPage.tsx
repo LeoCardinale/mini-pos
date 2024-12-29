@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, Transaction, PaymentMethod } from '../../types';
+import { Product, Transaction, Wallet, Currency, CashRegister } from '../../types';
 import {
     productOperations,
     transactionOperations,
@@ -11,6 +11,7 @@ import ProductsGrid from '../../components/pos/ProductsGrid';
 import CheckoutModal from '../../components/pos/CheckoutModal';
 import SearchBar from '../../components/common/SearchBar';
 import { useAuth } from '../../context/AuthContext';
+import { t } from 'i18next';
 
 interface CartItem {
     product: Product;
@@ -18,7 +19,7 @@ interface CartItem {
 }
 
 
-const CATEGORIES = ['Wines', 'Beers', 'Spirits', 'Food', 'Others'];
+const CATEGORIES = [t('inventory.catBeers'), t('inventory.catFood'), t('inventory.catSpirits'), t('inventory.catWines'), t('inventory.catOthers')];
 
 const POSPage = () => {
     const [products, setProducts] = useState<Product[]>([]);
@@ -30,11 +31,16 @@ const POSPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [discount, setDiscount] = useState(0);
     const { user } = useAuth();
+    const [currentRegister, setCurrentRegister] = useState<CashRegister | null>(null);
 
 
     useEffect(() => {
         loadProducts();
     }, []);
+
+    useEffect(() => {
+        checkCurrentRegister();
+    }, [user]);
 
     const loadProducts = async () => {
         try {
@@ -45,6 +51,16 @@ const POSPage = () => {
             setError('Error loading products');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const checkCurrentRegister = async () => {
+        try {
+            if (!user) return;
+            const register = await cashRegisterOperations.getCurrent(user.id);
+            setCurrentRegister(register);
+        } catch (err) {
+            setError('Error checking register status');
         }
     };
 
@@ -87,7 +103,12 @@ const POSPage = () => {
         setCartItems(prev => prev.filter(item => item.product.id !== productId));
     };
 
-    const handleCheckout = async (paymentMethod: PaymentMethod, customerName: string, discount: number) => {
+    const handleCheckout = async (data: {
+        paymentMethod: Wallet;
+        customerName: string;
+        discount: number;
+        currency: Currency;
+    }) => {
         try {
             console.log('User at checkout:', user);
             const currentRegister = await cashRegisterOperations.getCurrent(user!.id);
@@ -104,20 +125,25 @@ const POSPage = () => {
                 (sum, item) => sum + item.product.price * item.quantity,
                 0
             );
-            const total = Math.max(0, subtotal - discount);
+            const total = Math.max(0, subtotal - data.discount);
 
-            // Crear transacción
+            // Si el pago es en Bs, convertir el monto
+            const amount = data.currency === 'BS' ? total * currentRegister.dollarRate : total;
+
             if (!user) {
                 throw new Error('User not authenticated');
             }
+
             const transaction: Omit<Transaction, 'id'> = {
-                amount: total,
-                discount: discount,
-                type: paymentMethod,
+                amount,
+                discount: data.discount,
+                currency: data.currency,
+                wallet: data.paymentMethod,
+                type: data.paymentMethod,
                 createdAt: new Date(),
                 userId: user.id,
                 deviceId: localStorage.getItem('deviceId') || 'unknown',
-                customerName: customerName || undefined,
+                customerName: data.customerName || undefined,
                 status: 'active',
                 items: cartItems.map(item => ({
                     id: 0,
@@ -179,7 +205,7 @@ const POSPage = () => {
                         <SearchBar
                             value={searchTerm}
                             onChange={setSearchTerm}
-                            placeholder="Search by name or barcode..."
+                            placeholder={t('inventory.searchPlaceholder')}
                         />
                     </div>
                     <div className="flex space-x-2 overflow-x-auto py-2">
@@ -190,7 +216,7 @@ const POSPage = () => {
                                 : 'bg-gray-100 text-gray-800'
                                 }`}
                         >
-                            All
+                            {t('inventory.catAll')}
                         </button>
                         {CATEGORIES.map(category => (
                             <button
@@ -230,15 +256,12 @@ const POSPage = () => {
 
             {showCheckout && (
                 <CheckoutModal
-                    subtotal={cartItems.reduce(
+                    total={cartItems.reduce(
                         (sum, item) => sum + item.product.price * item.quantity,
                         0
                     )}
-                    total={Math.max(0, cartItems.reduce(
-                        (sum, item) => sum + item.product.price * item.quantity,
-                        0
-                    ) - discount)}
                     discount={discount}
+                    dollarRate={currentRegister?.dollarRate || 0}
                     onComplete={handleCheckout}
                     onCancel={() => setShowCheckout(false)}
                 />

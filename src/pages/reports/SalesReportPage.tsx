@@ -59,7 +59,7 @@ const SalesReportPage = () => {
         const csvContent = [
             headers.join(','),
             ...sales.map(sale => [
-                new Date(sale.createdAt).toLocaleString(),
+                `"${new Date(sale.createdAt).toLocaleString()}"`,
                 sale.product.name,
                 sale.quantity,
                 sale.price.toFixed(2),

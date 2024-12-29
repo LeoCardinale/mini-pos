@@ -29,6 +29,28 @@ const Navigation = () => {
                             {t('nav.pos')}
                         </Link>
 
+                        <Link
+                            to="/accounts"
+                            className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/accounts')
+                                ? 'bg-blue-500 text-white'
+                                : 'text-gray-700 hover:bg-blue-50'
+                                }`}
+                        >
+                            {t('nav.accounts')}
+                        </Link>
+
+                        <Link
+                            to="/register"
+                            className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/register')
+                                ? 'bg-blue-500 text-white'
+                                : 'text-gray-700 hover:bg-blue-50'
+                                }`}
+                        >
+                            {t('nav.register')}
+                        </Link>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
                         {user.role === 'admin' && (
                             <Link
                                 to="/inventory"
@@ -53,16 +75,6 @@ const Navigation = () => {
                             </Link>
                         )}
 
-                        <Link
-                            to="/register"
-                            className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/register')
-                                ? 'bg-blue-500 text-white'
-                                : 'text-gray-700 hover:bg-blue-50'
-                                }`}
-                        >
-                            {t('nav.register')}
-                        </Link>
-
                         {user.role === 'admin' && (
                             <Link
                                 to="/admin/users"
@@ -76,16 +88,6 @@ const Navigation = () => {
                         )}
 
                         <Link
-                            to="/accounts"
-                            className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/accounts')
-                                ? 'bg-blue-500 text-white'
-                                : 'text-gray-700 hover:bg-blue-50'
-                                }`}
-                        >
-                            {t('nav.accounts')}
-                        </Link>
-
-                        <Link
                             to="/reports/sales"
                             className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/reports/sales')
                                 ? 'bg-blue-500 text-white'
@@ -94,10 +96,6 @@ const Navigation = () => {
                         >
                             {t('nav.salesReport')}
                         </Link>
-
-                    </div>
-
-                    <div className="flex items-center space-x-4">
                         <span className="text-sm text-gray-700">
                             {user.name} ({user.role})
                         </span>

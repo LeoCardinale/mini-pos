@@ -155,12 +155,30 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ accountId, 
                                 >
                                     -
                                 </button>
-                                <span className="mx-4">{item.quantity}</span>
+                                <input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) => {
+                                        const value = parseInt(e.target.value) || 0;
+                                        if (value >= 0) {
+                                            handleUpdateQuantity(item.product.id, value);
+                                        }
+                                    }}
+                                    className="mx-4 w-16 text-center border rounded-md"
+                                    min="0"
+                                />
                                 <button
                                     onClick={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
                                     className="w-8 h-8 flex items-center justify-center rounded-full border"
                                 >
                                     +
+                                </button>
+
+                                <button
+                                    onClick={() => handleUpdateQuantity(item.product.id, 0)}
+                                    className="ml-4 text-red-600 hover:text-red-800 text-xl font-bold"
+                                >
+                                    ×
                                 </button>
                             </div>
                         </div>
@@ -170,6 +188,16 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ accountId, 
                 {error && (
                     <div className="text-red-600 mb-4">{error}</div>
                 )}
+
+                <div className="mt-auto border-t pt-4 space-y-2">
+                    <div className="flex justify-between text-lg font-bold">
+                        <span>Total:</span>
+                        <span>${(cartItems.reduce(
+                            (sum, item) => sum + item.product.price * item.quantity,
+                            0
+                        )).toFixed(2)}</span>
+                    </div>
+                </div>
 
                 <div className="flex gap-2">
                     <button

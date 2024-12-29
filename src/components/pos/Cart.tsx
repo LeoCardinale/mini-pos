@@ -75,7 +75,18 @@ const Cart: React.FC<CartProps> = ({
                             >
                                 -
                             </button>
-                            <span className="w-8 text-center">{item.quantity}</span>
+                            <input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value) || 0;
+                                    if (value >= 0) {
+                                        onUpdateQuantity(item.product.id, value);
+                                    }
+                                }}
+                                className="w-16 text-center border rounded-md"
+                                min="0"
+                            />
                             <button
                                 onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
                                 className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-300 hover:bg-gray-100"
@@ -84,7 +95,7 @@ const Cart: React.FC<CartProps> = ({
                             </button>
                             <button
                                 onClick={() => onRemoveItem(item.product.id)}
-                                className="ml-2 text-red-600 hover:text-red-800"
+                                className="ml-4 text-red-600 hover:text-red-800 text-xl font-bold"
                             >
                                 ×
                             </button>
