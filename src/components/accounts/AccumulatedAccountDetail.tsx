@@ -61,6 +61,9 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
     }, [user]);
 
     const handleAddItems = async (items: Array<{ productId: number; quantity: number; price: number }>) => {
+        if (!window.confirm('¿Está seguro que desea agregar estos productos a la cuenta?')) {
+            return;
+        }
         try {
             if (!user) {
                 throw new Error('User not authenticated');
@@ -156,7 +159,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
 
     const handlePaymentClick = () => {
         if (!currentRegister) {
-            setError('Please open the register first');
+            setError("Debe abrir caja para esta operación");
             return;
         }
         setShowCheckoutModal(true);
@@ -290,7 +293,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                             alert('Debe abrir caja para esta operación');
                             return;
                         }
-                        handlePaymentClick;
+                        handlePaymentClick();
                     }}
                     disabled={account.status !== 'open' || balance <= 0}
                     className={`bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed`}

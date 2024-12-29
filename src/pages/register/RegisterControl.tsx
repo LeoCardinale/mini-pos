@@ -67,6 +67,11 @@ const RegisterControl = () => {
 
     const handleOpenRegister = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!window.confirm('¿Está seguro que desea abrir la caja con estos montos?')) {
+            return;
+        }
+
         try {
             if (!user) {
                 setError('User not authenticated');
@@ -413,7 +418,23 @@ const RegisterControl = () => {
 
                     <div className="space-y-4">
 
-
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                                {t('register.dollarRate')}
+                            </label>
+                            <input
+                                type="number"
+                                value={formData.dollarRate}
+                                onChange={(e) => setFormData(prev => ({
+                                    ...prev,
+                                    dollarRate: parseFloat(e.target.value) || 0
+                                }))}
+                                step="0.01"
+                                min="0"
+                                required
+                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        </div>
                         {/* USD Wallets */}
                         <div className="border-t pt-4">
                             <h3 className="font-medium mb-2">Cuentas USD</h3>

@@ -19,7 +19,7 @@ interface ProductFormProps {
     onCancel: () => void;
 }
 
-const CATEGORIES = ['Wines', 'Beers', 'Spirits', 'Food', 'Others'];
+const CATEGORIES = [t('inventory.catBeers'), t('inventory.catFood'), t('inventory.catSpirits'), t('inventory.catWines'), t('inventory.catOthers')];
 
 const ProductForm: React.FC<ProductFormProps> = ({
     onSubmit,

@@ -42,7 +42,8 @@
         "product": "Producto",
         "id": "ID",
         "complete": "Completar",
-        "wallet": "Billetera"
+        "wallet": "Billetera",
+        "password": "Contraseña"
     },
     "nav": {
         "pos": "TPV",
@@ -56,7 +57,12 @@
     },
     "users": {
         "title": "Usuarios",
-        "addUser": "Agregar Usuario"
+        "addUser": "Crear Usuario",
+        "deactivate": "Desactivar",
+        "activate": "Activar",
+        "userRole": "Usuario",
+        "adminRole": "Administrador",
+        "createUser": "Crear Usuario"
     },
     "inventory": {
         "title": "Gestión de Inventario",

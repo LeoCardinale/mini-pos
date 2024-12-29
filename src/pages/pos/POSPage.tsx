@@ -116,7 +116,7 @@ const POSPage = () => {
 
             if (!currentRegister) {
                 console.log('No register found for user:', user?.id);
-                alert('Please open the register first');
+                alert("Debe abrir caja para esta operación");
                 return;
             }
 
@@ -189,7 +189,7 @@ const POSPage = () => {
             loadProducts();
             setShowCheckout(false);
 
-            alert('Sale completed successfully!');
+            alert("Venta realizada exitosamente!");
         } catch (err) {
             setError('Error processing sale');
         }
@@ -198,20 +198,22 @@ const POSPage = () => {
     if (isLoading) return <div>Loading...</div>;
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex gap-4">
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="mb-4 flex gap-2">
-                    <div className="flex-1">
+        <div className="h-[calc(100vh-4rem)] flex flex-col md:flex-row gap-4 p-4">
+            {/* Panel izquierdo: Búsqueda y Productos */}
+            <div className="flex-1 flex flex-col min-w-0">
+                {/* Barra de búsqueda y categorías */}
+                <div className="mb-4 flex flex-col sm:flex-row gap-2">
+                    <div className="w-full sm:w-64">
                         <SearchBar
                             value={searchTerm}
                             onChange={setSearchTerm}
                             placeholder={t('inventory.searchPlaceholder')}
                         />
                     </div>
-                    <div className="flex space-x-2 overflow-x-auto py-2">
+                    <div className="flex-1 flex gap-2 overflow-x-auto">
                         <button
                             onClick={() => setSelectedCategory(null)}
-                            className={`px-4 py-2 rounded-lg whitespace-nowrap ${selectedCategory === null
+                            className={`px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0 ${selectedCategory === null
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-100 text-gray-800'
                                 }`}
@@ -222,7 +224,7 @@ const POSPage = () => {
                             <button
                                 key={category}
                                 onClick={() => setSelectedCategory(category)}
-                                className={`px-4 py-2 rounded-lg whitespace-nowrap ${selectedCategory === category
+                                className={`px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0 ${selectedCategory === category
                                     ? 'bg-blue-600 text-white'
                                     : 'bg-gray-100 text-gray-800'
                                     }`}
@@ -233,7 +235,8 @@ const POSPage = () => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-auto pb-4">
+                {/* Grid de productos */}
+                <div className="flex-1 overflow-auto">
                     <ProductsGrid
                         products={filteredProducts}
                         onProductSelect={handleProductSelect}
@@ -242,7 +245,8 @@ const POSPage = () => {
                 </div>
             </div>
 
-            <div className="w-96">
+            {/* Panel derecho: Carrito */}
+            <div className="w-full md:w-96 flex-shrink-0">
                 <Cart
                     items={cartItems}
                     onUpdateQuantity={handleUpdateQuantity}
