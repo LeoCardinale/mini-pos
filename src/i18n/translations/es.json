@@ -124,7 +124,8 @@
         "initialAmounts": "Montos Iniciales",
         "finalAmounts": "Montos Finales",
         "salesByWallet": "Ventas por Método de Pago",
-        "totalDiscounts": "Total Descuentos"
+        "totalDiscounts": "Total Descuentos",
+        "closeBeforeLogout": "Favor cerrar caja antes de cerrar sesión"
     },
     "accounts": {
         "title": "Cuentas",
@@ -164,6 +165,7 @@
         "tradeName": "Nombre Comercial",
         "contact": "Persona de Contacto",
         "phone": "Teléfono",
+        "email": "Correo",
         "taxId": "RIF/NIF",
         "address": "Dirección",
         "titleAdd": "Agregar Proveedor"
@@ -185,7 +187,8 @@
     "confirmations": {
         "deleteProduct": "¿Está seguro que desea eliminar este producto?",
         "deleteSupplier": "¿Está seguro que desea eliminar este proveedor?",
-        "cancelTransaction": "¿Está seguro que desea cancelar esta transacción?"
+        "cancelTransaction": "¿Está seguro que desea cancelar esta transacción?",
+        "logout": "¿Está seguro que desea cerrar sesión?"
     },
     "auth": {
         "signIn": "Iniciar Sesión",

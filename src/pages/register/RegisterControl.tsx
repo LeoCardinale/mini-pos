@@ -1,7 +1,7 @@
 // src/pages/register/RegisterControl.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, CashRegister, PaymentMethod } from '../../types';
-import { cashRegisterOperations, transactionOperations } from '../../lib/database';
+import { cashRegisterOperations, transactionOperations, syncQueueOperations } from '../../lib/database';
 import SalesSummary from '../../components/register/SalesSummary';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
@@ -11,7 +11,6 @@ import { WalletAmounts } from '../../types';
 interface RegisterFormData extends WalletAmounts {
     dollarRate: number;
 }
-
 
 const RegisterControl = () => {
     const [isLoading, setIsLoading] = useState(true);
@@ -33,10 +32,7 @@ const RegisterControl = () => {
         cuentaBs: 0,
         dollarRate: 0
     });
-
-    useEffect(() => {
-        checkRegisterStatus();
-    }, []);
+    const initRef = useRef(false);
 
     const checkRegisterStatus = async () => {
         try {
@@ -47,13 +43,11 @@ const RegisterControl = () => {
 
             if (registers) {
                 const registerTransactions = await transactionOperations.getAll();
-                console.log('All transactions:', registerTransactions);
                 const filteredTransactions = registerTransactions.filter(transaction =>
                     transaction.userId === user?.id &&
                     transaction.createdAt >= registers.openedAt &&
                     (!registers.closedAt || transaction.createdAt <= registers.closedAt)
                 );
-                console.log('Filtered transactions:', filteredTransactions);
                 setTransactions(filteredTransactions);
             } else {
                 setTransactions([]);
@@ -64,6 +58,19 @@ const RegisterControl = () => {
             setIsLoading(false);
         }
     };
+
+    useEffect(() => {
+        // Evitar doble ejecución
+        if (initRef.current) return;
+        initRef.current = true;
+
+        checkRegisterStatus();
+
+        // Cleanup function
+        return () => {
+            initRef.current = false;
+        };
+    }, [user?.id]); // Dependencia específica en lugar de user completo
 
     const handleOpenRegister = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -111,7 +118,7 @@ const RegisterControl = () => {
         if (!window.confirm('¿Está seguro que desea cerrar la caja? Esta acción no se puede deshacer.')) {
             return;
         }
-        if (!currentRegister) return;
+        if (!currentRegister || !user) return '';
 
         try {
             // Validar que todos los montos sean válidos
@@ -119,6 +126,23 @@ const RegisterControl = () => {
                 setError('Please enter valid amounts');
                 return;
             }
+
+            // Generar el contenido del reporte
+            console.log('Caja cerrada, generando reporte...');
+            const csvContent = generateReportContent();
+
+            // Encolar el reporte para sincronización
+            await syncQueueOperations.addOperation({
+                type: 'create',
+                entity: 'report',
+                data: JSON.stringify({
+                    content: csvContent,
+                    fileName: `register-report-${user.name}-${new Date().toISOString().split('T')[0]}.csv`,
+                    type: 'register_report'
+                }),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
 
             await cashRegisterOperations.update(currentRegister.id, {
                 status: 'closed',
@@ -128,9 +152,6 @@ const RegisterControl = () => {
                 finalTransferUSD: finalAmounts.transferUSD,
                 finalCuentaBs: finalAmounts.cuentaBs
             });
-
-            console.log('Caja cerrada, generando reporte...');
-            await generateReport();
 
             console.log('Limpiando estado...');
             setFinalAmounts({
@@ -147,6 +168,105 @@ const RegisterControl = () => {
             console.error('Error al cerrar caja:', err);
             setError('Error closing register');
         }
+    };
+
+    const generateReportContent = () => {
+        if (!currentRegister || !user) return '';
+
+        const activeTransactions = transactions.filter(t => t.status === 'active');
+
+        // Calcular totales por wallet
+        const totalsByWallet = activeTransactions.reduce((acc, t) => ({
+            cashUSD: acc.cashUSD + (t.wallet === 'CASH_USD' ? t.amount : 0),
+            cashBs: acc.cashBs + (t.wallet === 'CASH_BS' ? t.amount : 0),
+            transferUSD: acc.transferUSD + (t.wallet === 'TRANSFER_USD' ? t.amount : 0),
+            cuentaBs: acc.cuentaBs + (t.wallet === 'CUENTA_BS' ? t.amount : 0)
+        }), {
+            cashUSD: 0,
+            cashBs: 0,
+            transferUSD: 0,
+            cuentaBs: 0
+        });
+
+        // Calcular montos esperados
+        const expectedAmounts = {
+            cashUSD: currentRegister.initialCashUSD + totalsByWallet.cashUSD,
+            cashBs: currentRegister.initialCashBs + totalsByWallet.cashBs,
+            transferUSD: currentRegister.initialTransferUSD + totalsByWallet.transferUSD,
+            cuentaBs: currentRegister.initialCuentaBs + totalsByWallet.cuentaBs
+        };
+
+        // Calcular diferencias
+        const differences = {
+            cashUSD: finalAmounts.cashUSD - expectedAmounts.cashUSD,
+            cashBs: finalAmounts.cashBs - expectedAmounts.cashBs,
+            transferUSD: finalAmounts.transferUSD - expectedAmounts.transferUSD,
+            cuentaBs: finalAmounts.cuentaBs - expectedAmounts.cuentaBs
+        };
+
+        const totalDiscounts = activeTransactions.reduce((sum, t) => sum + t.discount, 0);
+
+        const rows = [
+            ['Reporte de Caja'],
+            ['Usuario', user.name],
+            ['Fecha', new Date().toLocaleDateString()],
+            ['Hora Apertura', currentRegister.openedAt.toLocaleString()],
+            ['Hora Cierre', currentRegister.closedAt?.toLocaleString() || '-'],
+            ['Tasa Dólar', currentRegister.dollarRate.toString()],
+            [''],
+            ['Montos Iniciales'],
+            ['Efectivo USD', `$${currentRegister.initialCashUSD.toFixed(2)}`],
+            ['Efectivo Bs', `Bs.${currentRegister.initialCashBs.toFixed(2)}`],
+            ['Transferencia USD', `$${currentRegister.initialTransferUSD.toFixed(2)}`],
+            ['Cuenta Bs', `Bs.${currentRegister.initialCuentaBs.toFixed(2)}`],
+            [''],
+            ['Montos Finales'],
+            ['Efectivo USD', `$${finalAmounts.cashUSD.toFixed(2)}`],
+            ['Efectivo Bs', `Bs.${finalAmounts.cashBs.toFixed(2)}`],
+            ['Transferencia USD', `$${finalAmounts.transferUSD.toFixed(2)}`],
+            ['Cuenta Bs', `Bs.${finalAmounts.cuentaBs.toFixed(2)}`],
+            [''],
+            ['Ventas por Método de Pago'],
+            ['Efectivo USD', `$${totalsByWallet.cashUSD.toFixed(2)}`],
+            ['Efectivo Bs', `Bs.${totalsByWallet.cashBs.toFixed(2)}`],
+            ['Transferencia USD', `$${totalsByWallet.transferUSD.toFixed(2)}`],
+            ['Cuenta Bs', `Bs.${totalsByWallet.cuentaBs.toFixed(2)}`],
+            ['Total Descuentos', `$${totalDiscounts.toFixed(2)}`],
+            [''],
+            ['Diferencias en Cuentas'],
+            ['Efectivo USD', `$${differences.cashUSD.toFixed(2)}`],
+            ['Efectivo Bs', `Bs.${differences.cashBs.toFixed(2)}`],
+            ['Transferencia USD', `$${differences.transferUSD.toFixed(2)}`],
+            ['Cuenta Bs', `Bs.${differences.cuentaBs.toFixed(2)}`],
+            [''],
+            ['Detalle de Transacciones'],
+            ['Hora', 'Monto', 'Moneda', 'Método de Pago', 'Descuento', 'Cliente', 'Estado']
+        ];
+
+        // Agregar transacciones
+        transactions.forEach(t => {
+            rows.push([
+                t.createdAt.toLocaleString(),
+                t.amount.toFixed(2),
+                t.currency,
+                t.wallet,
+                t.discount.toFixed(2),
+                t.customerName || '-',
+                t.status
+            ]);
+        });
+
+        const csvContent = rows
+            .map(row => row.map(cell => `"${cell}"`).join(','))
+            .join('\n');
+
+        const blob = new Blob(['\ufeff' + csvContent], {
+            type: 'text/csv;charset=utf-8'
+        });
+
+        saveAs(blob, `register-report-${user.name}-${new Date().toISOString().split('T')[0]}.csv`);
+
+        return rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
     };
 
     const generateReport = async () => {

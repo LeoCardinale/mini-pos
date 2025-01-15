@@ -142,30 +142,106 @@ class SyncClient extends EventEmitter {
             });
 
             if (!response.ok) {
-                throw new Error(`Sync failed: ${response.statusText}`);
+                const responseText = await response.text();
+                // No lanzar error si es porque el producto ya existe
+                if (!(response.status === 400 && responseText.includes('already exists'))) {
+                    throw new Error(`Sync failed: ${responseText}`);
+                }
             }
+
+            // Si llegamos aquí, la sincronización fue exitosa o el error era esperado
+            await Promise.all(pendingOperations.map(op => syncQueueOperations.markAsCompleted(op.id)));
+            await syncQueueOperations.clearCompleted();
 
             const syncResponse: SyncResponse = await response.json();
             if (syncResponse.success) {
-                await Promise.all(
-                    pendingOperations.map(op =>
-                        syncQueueOperations.markAsCompleted(op.id)
-                    )
-                );
-
                 await this.applyRemoteOperations(syncResponse.operations);
                 this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
-                await syncQueueOperations.clearCompleted();
-                this.emit('syncComplete');
-            } else {
-                throw new Error(syncResponse.error || 'Sync failed');
             }
+
+            this.emit('syncComplete');
         } catch (error) {
-            // Convertir el error a una instancia de Error si no lo es
-            const errorToEmit = error instanceof Error ? error : new Error(String(error));
-            this.emit('syncError', errorToEmit);
             console.error('Sync error:', error);
-            throw error;
+            this.emit('syncError', error instanceof Error ? error : new Error(String(error)));
+        }
+    }
+
+    private async cleanSync() {
+        const response = await fetch(`${this.apiUrl}/sync`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.getAuthToken()}`
+            },
+            body: JSON.stringify({
+                operations: [],
+                lastSyncTimestamp: 0,
+                deviceId: localStorage.getItem('deviceId') || 'unknown'
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Clean sync failed: ${response.statusText}`);
+        }
+
+        const syncResponse: SyncResponse = await response.json();
+        if (syncResponse.success) {
+            const db = await initDatabase();
+            // Limpiar y actualizar datos locales
+            await db.clear('products');
+            await this.applyRemoteOperations(syncResponse.operations);
+            this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
+        }
+    }
+
+    private async normalSync(pendingOperations: SyncOperation[]) {
+        const db = await initDatabase();
+        const token = this.getAuthToken();
+        if (!token) throw new Error('No auth token available');
+
+        const syncRequest: SyncRequest = {
+            operations: pendingOperations,
+            lastSyncTimestamp: this.lastSyncTimestamp,
+            deviceId: localStorage.getItem('deviceId') || 'unknown'
+        };
+
+        const response = await fetch(`${this.apiUrl}/sync`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(syncRequest)
+        });
+
+        if (!response.ok) {
+            // Si el error es 400 Bad Request y el mensaje indica que ya existe
+            const responseText = await response.text();
+            if (response.status === 400 && responseText.includes('already exists')) {
+                const tx = db.transaction('syncQueue', 'readwrite');
+                await Promise.all(
+                    pendingOperations.map(op =>
+                        tx.store.put({ ...op, status: 'completed' })
+                    )
+                );
+                await tx.done;
+                return;
+            }
+            throw new Error(`Sync failed: ${response.statusText}`);
+        }
+
+        const syncResponse: SyncResponse = await response.json();
+        if (syncResponse.success) {
+            const tx = db.transaction('syncQueue', 'readwrite');
+            await Promise.all(
+                pendingOperations.map(op =>
+                    tx.store.put({ ...op, status: 'completed' })
+                )
+            );
+            await tx.done;
+
+            await this.applyRemoteOperations(syncResponse.operations);
+            this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
         }
     }
 
@@ -190,62 +266,72 @@ class SyncClient extends EventEmitter {
 
                 switch (operation.entity) {
                     case 'product':
-                        // Verificar si el producto existe antes de intentar crearlo
-                        const existingProduct = await productOperations.getById(data.id);
-
                         switch (operation.type) {
                             case 'create':
-                                if (!existingProduct) {
-                                    await productOperations.create(data);
+                                try {
+                                    // Verificar primero si el producto ya existe
+                                    const existingProduct = await productOperations.getById(data.id);
+                                    if (!existingProduct) {
+                                        await productOperations.create(data);
+                                    } else {
+                                        console.log('Product already exists, skipping creation');
+                                    }
+                                } catch (error) {
+                                    // Solo logear el error pero no detener el proceso
+                                    console.error('Error creating product:', error);
                                 }
                                 break;
                             case 'update':
-                                if (existingProduct) {
+                                try {
                                     await productOperations.update(data.id, data);
+                                } catch (error) {
+                                    console.error('Error updating product:', error);
                                 }
                                 break;
                             case 'delete':
-                                if (existingProduct) {
+                                try {
                                     await productOperations.delete(data.id);
+                                } catch (error) {
+                                    console.error('Error deleting product:', error);
                                 }
                                 break;
                         }
                         break;
 
                     case 'transaction':
-                        const existingTransaction = await transactionOperations.getById?.(data.id);
-
-                        switch (operation.type) {
-                            case 'create':
+                        if (operation.type === 'create') {
+                            try {
+                                const existingTransaction = await transactionOperations.getById(data.id);
                                 if (!existingTransaction) {
                                     await transactionOperations.create(data);
                                 }
-                                break;
-                            // Normalmente no permitimos actualizar o eliminar transacciones
+                            } catch (error) {
+                                console.error('Error processing transaction:', error);
+                            }
                         }
                         break;
 
                     case 'cashRegister':
-                        const existingRegister = await cashRegisterOperations.getById?.(data.id);
+                        try {
+                            const existingRegister = await cashRegisterOperations.getById(data.id);
 
-                        switch (operation.type) {
-                            case 'create':
-                                if (!existingRegister) {
-                                    await cashRegisterOperations.create(data);
-                                }
-                                break;
-                            case 'update':
-                                if (existingRegister) {
-                                    await cashRegisterOperations.update(data.id, data);
-                                }
-                                break;
+                            if (operation.type === 'create' && !existingRegister) {
+                                await cashRegisterOperations.create(data);
+                            } else if (operation.type === 'update' && existingRegister) {
+                                await cashRegisterOperations.update(data.id, data);
+                            }
+                        } catch (error) {
+                            console.error('Error processing cash register:', error);
                         }
                         break;
                 }
+
+                // Marcar la operación como completada después de procesarla
+                await syncQueueOperations.markAsCompleted(operation.id);
+
             } catch (error) {
-                if (error instanceof Error && error.name !== 'ConstraintError') {
-                    console.error(`Failed to apply remote operation:`, operation, error);
-                }
+                console.error(`Failed to apply remote operation:`, operation, error);
+                // No relanzamos el error para continuar con las siguientes operaciones
             }
         }
     }

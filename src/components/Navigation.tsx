@@ -3,6 +3,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { cashRegisterOperations } from '../lib/database';
 
 
 const Navigation = () => {
@@ -13,6 +14,30 @@ const Navigation = () => {
     if (!user) return null;
 
     const isActive = (path: string) => location.pathname === path;
+
+    const handleLogout = async () => {
+        try {
+            // Primero, verificar si hay una caja abierta para este usuario
+            const currentRegister = await cashRegisterOperations.getCurrent(user?.id);
+
+            if (currentRegister && currentRegister.status === 'open') {
+                alert(t('register.closeBeforeLogout') || 'Favor cerrar caja antes de cerrar sesión');
+                return;
+            }
+
+            // Si no hay caja abierta, pedir confirmación
+            if (!window.confirm(t('confirmations.logout') || '¿Está seguro que desea cerrar sesión?')) {
+                return;
+            }
+
+            // Si el usuario confirma, proceder con el logout
+            logout();
+        } catch (error) {
+            console.error('Error checking register status:', error);
+            alert(t('register.closeBeforeLogout') || 'Favor cerrar caja antes de cerrar sesión');
+            return;
+        }
+    };
 
     return (
         <nav className="bg-white shadow-lg">
@@ -100,7 +125,7 @@ const Navigation = () => {
                             {user.name} ({user.role})
                         </span>
                         <button
-                            onClick={logout}
+                            onClick={handleLogout}  // Cambiar onClick={logout} por onClick={handleLogout}
                             className="px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50"
                         >
                             {t('nav.logout')}

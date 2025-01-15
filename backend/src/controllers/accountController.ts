@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, AccountType, AccountTransaction, PrepaidProduct } from '@prisma/client';
+import { PrismaClient, AccountType } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth';
 
 interface TransactionItem {

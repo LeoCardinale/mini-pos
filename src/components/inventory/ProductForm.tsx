@@ -399,22 +399,24 @@ const ProductForm: React.FC<ProductFormProps> = ({
                                     ×
                                 </button>
                             </div>
-                            <div className="relative aspect-video mb-4">
-                                <video
-                                    ref={videoRef}
-                                    className="w-full h-full rounded-lg object-cover bg-black"
-                                    autoPlay
-                                    playsInline
-                                    onError={(e) => {
-                                        console.error('Video error:', e);
-                                        setError('Error initializing video');
-                                    }}
-                                />
-                                {(!videoRef.current?.srcObject && !stream) && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                                        Initializing camera...
-                                    </div>
-                                )}
+                            <div className="relative mx-auto">
+                                <div className="aspect-square mb-4"> {/* Cambiado a aspect-square */}
+                                    <video
+                                        ref={videoRef}
+                                        className="w-full h-full rounded-lg object-cover bg-black"
+                                        autoPlay
+                                        playsInline
+                                        onError={(e) => {
+                                            console.error('Video error:', e);
+                                            setError('Error initializing video');
+                                        }}
+                                    />
+                                    {(!videoRef.current?.srcObject && !stream) && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                                            Initializing camera...
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex justify-end gap-3">
                                 <button

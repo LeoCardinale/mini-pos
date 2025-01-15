@@ -1,22 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ProductsGrid from '../pos/ProductsGrid';
 import Cart from '../pos/Cart';
-import { PaymentMethod, Product, Wallet, Currency, CashRegister, Transaction } from '../../types';
+import { Product, Wallet, Currency, CashRegister, Transaction, Account } from '../../types';
 import CheckoutModal from '../pos/CheckoutModal';
 import SearchBar from '../common/SearchBar';
-import { accountOperations, initDatabase, cashRegisterOperations, transactionOperations } from '../../lib/database';
+import { accountOperations, productOperations, cashRegisterOperations, transactionOperations } from '../../lib/database';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { config } from '../../config';
 
 
 interface PrepaidProductSelectorProps {
-    accountId: number;
+    account: Account;
     onSuccess: () => void;
     onCancel: () => void;
 }
 
-const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ accountId, onSuccess, onCancel }) => {
+const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account, onSuccess, onCancel }) => {
     const [products, setProducts] = useState<Product[]>([]);
     const [cartItems, setCartItems] = useState<Array<{ product: Product; quantity: number }>>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -29,43 +28,24 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
     const { user } = useAuth();
     const { t } = useTranslation();
     const [currentRegister, setCurrentRegister] = useState<CashRegister | null>(null);
-    const [accountData, setAccountData] = useState<{ customerName: string } | null>(null);
 
     useEffect(() => {
-        // Usar indexedDB para obtener los datos de la cuenta
-        const loadAccountData = async () => {
-            const db = await initDatabase();
-            const tx = db.transaction('accounts', 'readonly');
-            const account = await tx.store.get(accountId);
-            if (account) {
-                setAccountData(account);
-            }
-        };
-        loadAccountData();
-    }, [accountId]);
-
-    useEffect(() => {
-        const loadProducts = async () => {
-            try {
-                setIsLoading(true);
-                const db = await initDatabase();
-                const tx = db.transaction('products', 'readonly');
-                const products = await tx.store.getAll();
-
-                // Filtrar solo productos activos
-                setProducts(products.filter((p: Product) => p.isActive));
-            } catch (error) {
-                setError('Error loading products');
-            } finally {
-                setIsLoading(false);
-            }
-        };
         loadProducts();
+        checkCurrentRegister();
     }, []);
 
-    useEffect(() => {
-        checkCurrentRegister();
-    }, [user]);
+    const loadProducts = async () => {
+        try {
+            setIsLoading(true);
+            const allProducts = await productOperations.getAll();
+            setProducts(allProducts.filter((p: Product) => p.isActive));
+        } catch (error) {
+            setError(t('errors.products'));
+            console.error('Error loading products:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleCheckout = async (data: {
         paymentMethod: Wallet;
@@ -74,10 +54,17 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
         currency: Currency;
     }) => {
         try {
-            if (!user) {
-                throw new Error('User not authenticated');
+            console.log('User at checkout:', user);
+            const currentRegister = await cashRegisterOperations.getCurrent(user!.id);
+            console.log('Current register at checkout:', currentRegister);
+
+            if (!currentRegister) {
+                console.log('No register found for user:', user?.id);
+                alert("Debe abrir caja para esta operación");
+                return;
             }
 
+            // Calcular total con descuento
             const subtotal = cartItems.reduce(
                 (sum, item) => sum + item.product.price * item.quantity,
                 0
@@ -85,7 +72,11 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
             const total = Math.max(0, subtotal - data.discount);
 
             // Si el pago es en Bs, convertir el monto
-            const amount = data.currency === 'BS' ? total * (currentRegister?.dollarRate || 0) : total;
+            const amount = data.currency === 'BS' ? total * currentRegister.dollarRate : total;
+
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
 
             // Crear la transacción POS
             const transaction: Omit<Transaction, 'id'> = {
@@ -97,7 +88,7 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
                 createdAt: new Date(),
                 userId: user.id,
                 deviceId: localStorage.getItem('deviceId') || 'unknown',
-                customerName: `Prepaid: ${accountData?.customerName || accountId}`,
+                customerName: `Prepaid: ${account.customerName}`,
                 status: 'active',
                 items: cartItems.map(item => ({
                     id: 0,
@@ -118,7 +109,7 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
             }));
 
             await accountOperations.addItems(
-                accountId,
+                account.id,
                 products,
                 user.id,
                 'PREPAID',
@@ -184,7 +175,7 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
                     />
                 </div>
 
-                <div className="mb-4 flex gap-2">
+                <div className="mb-4 flex gap-2 overflow-x-auto">
                     <button
                         onClick={() => setSelectedCategory(null)}
                         className={`px-4 py-2 rounded-lg ${selectedCategory === null
@@ -207,17 +198,19 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
                         </button>
                     ))}
                 </div>
-                <ProductsGrid
-                    products={products.filter(product => {
-                        const searchLower = searchTerm.toLowerCase();
-                        const matchesSearch = product.name.toLowerCase().includes(searchLower) ||
-                            (product.barcode && product.barcode.toLowerCase().includes(searchLower));
-                        const matchesCategory = selectedCategory ? product.category === selectedCategory : true;
-                        return matchesSearch && matchesCategory;
-                    })}
-                    onProductSelect={handleProductSelect}
-                    selectedCategory={selectedCategory}
-                />
+                <div className="flex-1 overflow-y-auto">
+                    <ProductsGrid
+                        products={products.filter(product => {
+                            const searchLower = searchTerm.toLowerCase();
+                            const matchesSearch = product.name.toLowerCase().includes(searchLower) ||
+                                (product.barcode && product.barcode.toLowerCase().includes(searchLower));
+                            const matchesCategory = selectedCategory ? product.category === selectedCategory : true;
+                            return matchesSearch && matchesCategory;
+                        })}
+                        onProductSelect={handleProductSelect}
+                        selectedCategory={selectedCategory}
+                    />
+                </div>
             </div>
             <div className="w-96">
                 <Cart
@@ -238,20 +231,26 @@ const PrepaidProductSelector: React.FC<PrepaidProductSelectorProps> = ({ account
                     onRemoveItem={(productId) => {
                         setCartItems(prev => prev.filter(item => item.product.id !== productId));
                     }}
-                    onCheckout={() => setShowCheckoutModal(true)}
+                    onCheckout={() => {
+                        if (!currentRegister) {
+                            alert("Debe abrir caja para esta operación");
+                            return;
+                        }
+                        setShowCheckoutModal(true);
+                    }}
                     onClearCart={() => setCartItems([])}
                     discount={discount}
                     onDiscountChange={setDiscount}
                 />
 
-                {showCheckoutModal && (
+                {showCheckoutModal && currentRegister && (
                     <CheckoutModal
                         total={cartItems.reduce(
                             (sum, item) => sum + item.product.price * item.quantity,
                             0
                         )}
                         discount={discount}
-                        dollarRate={currentRegister?.dollarRate || 0}
+                        dollarRate={currentRegister.dollarRate}
                         onComplete={handleCheckout}
                         onCancel={() => setShowCheckoutModal(false)}
                         context="account"

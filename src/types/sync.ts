@@ -2,23 +2,30 @@ export interface SyncOperation {
     id: string;
     timestamp: number;
     type: 'create' | 'update' | 'delete';
-    entity: 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord';
+    entity: SyncEntityType;
     data: string;  // JSON serializado
     deviceId: string;
     status: 'pending' | 'completed' | 'failed';
+    createdAt: Date;
 }
 
 export interface SyncRequest {
-    operations: SyncOperation[];
+    operations: Array<Omit<SyncOperation, 'timestamp'> & { timestamp: number }>;
     lastSyncTimestamp: number;
     deviceId: string;
 }
 
 export interface SyncResponse {
     success: boolean;
-    operations: SyncOperation[];
+    operations: Array<Omit<SyncOperation, 'timestamp'> & { timestamp: number }>;
     lastSyncTimestamp: number;
     error?: string;
 }
 
-export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord';
+// Tipo auxiliar para crear nuevas operaciones
+export type NewSyncOperation = Omit<SyncOperation, 'id' | 'createdAt' | 'timestamp'> & {
+    timestamp?: number;
+};
+
+// Re-exportar el tipo SyncEntityType para mantener la consistencia
+export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord' | 'report';

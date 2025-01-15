@@ -109,7 +109,7 @@ const AccountsPage = () => {
                                 </span>
                             </div>
                             <div className="text-sm text-gray-500">
-                                <p>{t('common.type')}: {account.type}</p>
+                                <p>{t('common.type')}: {account.type === 'PREPAID' ? t('accounts.prepaid') : t('accounts.accumulated')}</p>
                                 <p>{t('accounts.openedAt')}: {account.openedAt.toLocaleString()}</p>
                                 {account.creditLimit && (
                                     <p>{t('accounts.creditLimit')}: ${account.creditLimit}</p>
@@ -143,7 +143,7 @@ const AccountsPage = () => {
                                 </span>
                             </div>
                             <div className="text-sm text-gray-500">
-                                <p>{t('common.type')}: {account.type}</p>
+                                <p>{t('common.type')}: {account.type === 'PREPAID' ? t('accounts.prepaid') : t('accounts.accumulated')}</p>
                                 <p>{t('accounts.openedAt')}: {account.openedAt.toLocaleString()}</p>
                                 {account.creditLimit && (
                                     <p>{t('accounts.creditLimit')}: ${account.creditLimit}</p>

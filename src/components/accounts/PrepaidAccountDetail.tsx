@@ -5,6 +5,8 @@ import PrepaidProductSelector from './PrepaidProductSelector';
 import CloseAccountConfirm from './CloseAccountConfirm';
 import { initDatabase, accountOperations, cashRegisterOperations } from '../../lib/database';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+
 
 interface PrepaidAccountDetailProps {
     account: Account;
@@ -20,6 +22,8 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
     const [showCloseConfirm, setShowCloseConfirm] = useState(false);
     const { t } = useTranslation();
     const [registerStatus, setRegisterStatus] = useState<'open' | 'closed' | null>(null);
+    const navigate = useNavigate();
+
 
     // Mantenemos este cálculo igual
     const totalPaid = products.reduce((sum, p) => {
@@ -126,6 +130,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
             await accountOperations.closeAccount(account.id, user.id, 'PREPAID');
             await onUpdate();
             setShowCloseConfirm(false);
+            navigate('/accounts');
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Error closing account');
         }
@@ -171,7 +176,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
                             alert('Debe abrir caja para esta operación');
                             return;
                         }
-                        handleCloseAccount;
+                        handleCloseAccount();
                     }}
                     disabled={account.status !== 'open' || products.some(p => p.paid > p.consumed)}
                     className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -240,7 +245,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
                 <div className="fixed inset-0 bg-white z-50">
                     <div className="p-4">
                         <PrepaidProductSelector
-                            accountId={account.id}
+                            account={account}
                             onSuccess={() => {
                                 setShowProductSelector(false);
                                 loadTransactions();

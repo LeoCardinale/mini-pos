@@ -8,6 +8,8 @@ import { initDatabase, cashRegisterOperations, transactionOperations } from '../
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import CheckoutModal from '../pos/CheckoutModal';
+import { useNavigate } from 'react-router-dom';
+
 
 type PaymentMethod = 'cash' | 'card' | 'transfer';
 
@@ -40,6 +42,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
     const [currentRegister, setCurrentRegister] = useState<CashRegister | null>(null);
 
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+    const navigate = useNavigate();
 
 
     useEffect(() => {
@@ -257,6 +260,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
             await accountOperations.closeAccount(account.id, user.id, 'ACCUMULATED');
             await onUpdate();
             setShowCloseConfirm(false);
+            navigate('/accounts');
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Error closing account');
         }
@@ -321,7 +325,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                             alert('Debe abrir caja para esta operación');
                             return;
                         }
-                        handleCloseAccount;
+                        handleCloseAccount();
                     }}
                     disabled={account.status !== 'open' || Math.abs(balance) >= 0.01}
                     className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"

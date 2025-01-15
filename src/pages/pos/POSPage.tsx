@@ -47,8 +47,9 @@ const POSPage = () => {
             setIsLoading(true);
             const allProducts = await productOperations.getAll();
             setProducts(allProducts.filter((p: Product) => p.isActive));
-        } catch (err) {
-            setError('Error loading products');
+        } catch (error) {
+            setError(t('errors.products'));
+            console.error('Error loading products:', error);
         } finally {
             setIsLoading(false);
         }

@@ -141,15 +141,18 @@ const SalesSummary: React.FC<SalesSummaryProps> = ({
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         "{transaction.createdAt.toLocaleTimeString()}"
                                     </td>
+
                                     <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${transaction.status === 'cancelled' ? 'text-gray-400 line-through' : 'text-gray-900'
                                         }`}>
                                         {transaction.currency === 'USD' ? '$' : 'Bs.'} {transaction.amount.toFixed(2)}
                                     </td>
+
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
                                         {transaction.discount > 0 ?
                                             `${transaction.currency === 'USD' ? '$' : 'Bs.'} ${transaction.discount.toFixed(2)}`
                                             : '-'}
                                     </td>
+
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {(() => {
                                             switch (transaction.wallet) {
@@ -161,9 +164,11 @@ const SalesSummary: React.FC<SalesSummaryProps> = ({
                                             }
                                         })()}
                                     </td>
+
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {transaction.customerName || '-'}
                                     </td>
+
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                         {transaction.status === 'active' ? (
                                             <span className="text-green-600">{t('common.active')}</span>

@@ -2,11 +2,16 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-interface UserFormProps {
-    onSubmit: (userData: UserFormData) => Promise<void>;
-    onCancel: () => void;
+// Interface para los datos del formulario (incluyendo confirmación)
+interface UserFormState {
+    name: string;
+    email: string;
+    password: string;
+    passwordConfirm: string;
+    roleId: string;
 }
 
+// Interface para los datos que se envían al backend (sin confirmación)
 interface UserFormData {
     name: string;
     email: string;
@@ -14,12 +19,18 @@ interface UserFormData {
     roleId: string;
 }
 
+interface UserFormProps {
+    onSubmit: (userData: UserFormData) => Promise<void>;
+    onCancel: () => void;
+}
+
 const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
-    const [formData, setFormData] = useState<UserFormData>({
+    const [formData, setFormData] = useState<UserFormState>({
         name: '',
         email: '',
         password: '',
-        roleId: '2'  // Por defecto, rol de usuario normal
+        passwordConfirm: '',
+        roleId: '2'
     });
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -28,10 +39,17 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+
+        if (formData.password !== formData.passwordConfirm) {
+            setError(t('validation.passwordsDoNotMatch'));
+            return;
+        }
+
         setIsLoading(true);
 
         try {
-            await onSubmit(formData);
+            const { passwordConfirm, ...submitData } = formData;
+            await onSubmit(submitData);
         } catch (err) {
             setError(err instanceof Error ? err.message : t('errors.saving', { item: t('users.user') }));
         } finally {
@@ -85,6 +103,21 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
                     type="password"
                     name="password"
                     value={formData.password}
+                    onChange={handleChange}
+                    required
+                    minLength={6}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-gray-700">
+                    {t('users.confirmPassword')}
+                </label>
+                <input
+                    type="password"
+                    name="passwordConfirm"
+                    value={formData.passwordConfirm}
                     onChange={handleChange}
                     required
                     minLength={6}

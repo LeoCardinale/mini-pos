@@ -4,8 +4,6 @@ import { Product } from '../../types';
 import { productOperations } from '../../lib/database';
 import ProductForm from '../../components/inventory/ProductForm';
 import SearchBar from '../../components/common/SearchBar';
-import { config } from '../../config';
-import { syncClient } from '../../lib/sync/syncClient';
 import { useTranslation } from 'react-i18next';
 
 

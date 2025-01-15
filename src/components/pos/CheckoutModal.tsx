@@ -8,7 +8,7 @@ interface CheckoutModalProps {
     dollarRate: number;
     context?: 'pos' | 'account';
     onComplete: (data: {
-        paymentMethod: Wallet;  // Cambiado de PaymentMethod a Wallet
+        paymentMethod: Wallet;
         customerName: string;
         discount: number;
         currency: Currency;

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Product } from '../../types';
 import ProductsGrid from '../pos/ProductsGrid';
 import SearchBar from '../common/SearchBar';
 import { config } from '../../config';
-import { initDatabase } from '../../lib/database';
+import { productOperations } from '../../lib/database';
 import { t } from 'i18next';
 
 
@@ -24,22 +24,25 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ accountId, 
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const componentRef = useRef({ initialized: false });
 
     useEffect(() => {
-        const loadProducts = async () => {
-            try {
-                const db = await initDatabase();
-                const tx = db.transaction('products', 'readonly');
-                const products = await tx.store.getAll();
-
-                // Filtrar solo productos activos
-                setProducts(products.filter((p: Product) => p.isActive));
-            } catch (error) {
-                console.error('Error loading products:', error);
-            }
-        };
         loadProducts();
     }, []);
+
+    const loadProducts = async () => {
+        try {
+            setIsLoading(true);
+            const allProducts = await productOperations.getAll();
+            setProducts(allProducts.filter((p: Product) => p.isActive));
+        } catch (error) {
+            setError(t('errors.products'));
+            console.error('Error loading products:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleProductSelect = (product: Product) => {
         setCartItems(prev => {
@@ -92,7 +95,8 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ accountId, 
     };
 
     return (
-        <div className="h-full flex gap-4">
+        //<div className="h-full flex gap-4">
+        <div className="h-[calc(100vh-4rem)] flex gap-4">
             <div className="flex-1 flex flex-col overflow-hidden">
                 <div className="mb-4">
                     <SearchBar
@@ -126,12 +130,14 @@ const AccountItemsSelector: React.FC<AccountItemsSelectorProps> = ({ accountId, 
                     ))}
                 </div>
 
-                <div className="flex-1 overflow-auto">
+                <div className="flex-1 overflow-y-auto">
                     <ProductsGrid
                         products={products.filter(product => {
                             const searchLower = searchTerm.toLowerCase();
-                            return product.name.toLowerCase().includes(searchLower) ||
+                            const matchesSearch = product.name.toLowerCase().includes(searchLower) ||
                                 (product.barcode && product.barcode.toLowerCase().includes(searchLower));
+                            const matchesCategory = selectedCategory ? product.category === selectedCategory : true;
+                            return matchesSearch && matchesCategory;
                         })}
                         onProductSelect={handleProductSelect}
                         selectedCategory={selectedCategory}

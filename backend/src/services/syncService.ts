@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { SyncOperation, SyncRequest, SyncResponse } from '../types/sync';
+import { DriveService } from './driveService';
+
 
 const prisma = new PrismaClient();
 
@@ -11,18 +13,40 @@ class SyncService {
         prisma: any
     ) {
         for (const item of transaction.items) {
-            await prisma.salesRecord.create({
-                data: {
-                    productId: item.productId,
-                    quantity: item.quantity,
-                    price: item.price,
-                    total: item.quantity * item.price,
-                    source,
-                    sourceId: transaction.id,
-                    userId: transaction.userId,
-                    createdAt: new Date(transaction.createdAt)
+            // Verificar si ya existe el registro
+            const existingRecord = await prisma.salesRecord.findFirst({
+                where: {
+                    sourceId: transaction.id.toString(),
+                    source: source
                 }
             });
+
+            if (!existingRecord) {
+                await prisma.salesRecord.create({
+                    data: {
+                        productId: item.productId,
+                        quantity: item.quantity,
+                        price: item.price,
+                        total: item.quantity * item.price,
+                        source,
+                        sourceId: transaction.id.toString(),
+                        userId: transaction.userId,
+                        createdAt: new Date(transaction.createdAt)
+                    }
+                });
+            }
+        }
+    }
+
+    private driveService: DriveService | null = null;
+
+    constructor() {
+        try {
+            this.driveService = new DriveService();
+        } catch (error) {
+            console.error('Failed to initialize DriveService:', error);
+            // No lanzamos el error aquí para que el servicio de sync siga funcionando
+            this.driveService = null;
         }
     }
 
@@ -30,8 +54,13 @@ class SyncService {
         console.log('Processing incoming operations:', operations);
         for (const operation of operations) {
             try {
-                console.log(`Processing operation: ${operation.type} ${operation.entity}`, operation);
-                console.log('Processing operation_2:', operation.type, operation.entity, operation.data);
+                //console.log(`Processing operation: ${operation.type} ${operation.entity}`, operation);
+                //console.log('Processing operation_2:', operation.type, operation.entity, operation.data);
+                console.log('Processing operation:', {
+                    type: operation.type,
+                    entity: operation.entity,
+                    data: operation.data
+                });
 
                 // Verificar si la operacion ya fue procesada
                 const existingOperation = await prisma.syncOperation.findUnique({
@@ -113,44 +142,108 @@ class SyncService {
                 break;
             case 'salesRecord':
                 if (operation.type === 'create') {
-                    await prisma.salesRecord.create({
-                        data: {
-                            productId: data.productId,
-                            quantity: data.quantity,
-                            price: data.price,
-                            total: data.total,
-                            source: data.source,
+
+                    const existingRecord = await prisma.salesRecord.findFirst({
+                        where: {
                             sourceId: data.sourceId,
-                            userId: data.userId,
-                            createdAt: new Date(data.createdAt)
+                            source: data.source
                         }
                     });
+
+                    if (!existingRecord) {
+                        await prisma.salesRecord.create({
+                            data: {
+                                productId: data.productId,
+                                quantity: data.quantity,
+                                price: data.price,
+                                total: data.total,
+                                source: data.source,
+                                sourceId: data.sourceId,
+                                userId: data.userId,
+                                createdAt: new Date(data.createdAt)
+                            }
+                        });
+                    }
+                }
+                break;
+            case 'report':
+                if (operation.type === 'create' && this.driveService) {
+                    const reportData = JSON.parse(operation.data);
+                    try {
+                        await this.driveService.uploadCsv(
+                            reportData.content,
+                            reportData.fileName
+                        );
+                    } catch (error) {
+                        console.error('Failed to upload report to Drive:', error);
+                        // No lanzamos el error para que la sincronización continue
+                    }
                 }
                 break;
         }
     }
 
     private async applyProductOperation(type: string, data: any): Promise<void> {
-        // Remover campos que no estan en el esquema
-        const { lastUpdated, ...productData } = data;
+        try {
+            // Verificar si el producto ya existe por nombre o código de barras
+            const existingProduct = await prisma.product.findFirst({
+                where: {
+                    OR: [
+                        { name: data.name },
+                        { barcode: data.barcode }
+                    ]
+                }
+            });
 
-        switch (type) {
-            case 'create':
-                await prisma.product.create({
-                    data: productData
-                });
-                break;
-            case 'update':
-                await prisma.product.update({
-                    where: { id: data.id },
-                    data: productData
-                });
-                break;
-            case 'delete':
-                await prisma.product.delete({
-                    where: { id: data.id }
-                });
-                break;
+            if (existingProduct) {
+                return;
+            }
+
+            const {
+                lastUpdated,
+                id,  // Eliminamos el id del payload ya que Prisma lo autogenerará
+                createdAt,
+                updatedAt,
+                supplierId,
+                createdBy,
+                updatedBy,
+                ...cleanData
+            } = data;
+
+            const productData = {
+                ...cleanData,
+                supplier: supplierId ? {
+                    connect: { id: supplierId }
+                } : undefined,
+                creator: {
+                    connect: { id: createdBy }
+                },
+                updater: {
+                    connect: { id: updatedBy }
+                }
+            };
+
+            switch (type) {
+                case 'create':
+                    await prisma.product.create({
+                        data: productData
+                    });
+                    break;
+                case 'update':
+                    await prisma.product.update({
+                        where: { id: data.id },
+                        data: productData
+                    });
+                    break;
+                case 'delete':
+                    await prisma.product.delete({
+                        where: { id: data.id }
+                    });
+                    break;
+            }
+        } catch (error) {
+            console.error('Error in applyProductOperation:', error);
+            throw error;
         }
     }
 

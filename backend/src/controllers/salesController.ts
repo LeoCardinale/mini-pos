@@ -1,11 +1,11 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { AuthRequest } from '../middleware/auth';
 
 const prisma = new PrismaClient();
 
 export const getSalesReport = async (req: Request, res: Response) => {
     const { startDate, endDate, source } = req.query;
+    console.log('Fetching sales report with params:', { startDate, endDate, source });
 
     try {
         const sales = await prisma.salesRecord.findMany({
@@ -31,6 +31,13 @@ export const getSalesReport = async (req: Request, res: Response) => {
                 createdAt: 'desc'
             }
         });
+
+        console.log('Found sales records:', sales.map(s => ({
+            id: s.id,
+            sourceId: s.sourceId,
+            source: s.source,
+            createdAt: s.createdAt
+        })));
 
         res.json(sales);
     } catch (error) {
