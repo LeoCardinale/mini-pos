@@ -12,7 +12,7 @@ export const getUsers = async (req: Request, res: Response) => {
         const users = await prisma.user.findMany({
             select: {
                 id: true,
-                email: true,
+                cedula: true,
                 name: true,
                 active: true,
                 role: {
@@ -25,7 +25,7 @@ export const getUsers = async (req: Request, res: Response) => {
 
         const formattedUsers = users.map(user => ({
             id: user.id,
-            email: user.email,
+            cedula: user.cedula,
             name: user.name,
             active: user.active,
             role: user.role.name
@@ -41,20 +41,19 @@ export const getUsers = async (req: Request, res: Response) => {
 // Crear usuario
 export const createUser = async (req: Request, res: Response) => {
     try {
-        const { email, name, password, roleId } = req.body;
+        const { cedula, name, password, roleId } = req.body;
 
-        // Validaciones básicas
-        if (!email || !name || !password || !roleId) {
+        if (!cedula || !name || !password || !roleId) {
             return res.status(400).json({ error: 'All fields are required' });
         }
 
-        // Verificar si el email ya existe
+        // Verificar si la cédula ya existe
         const existingUser = await prisma.user.findUnique({
-            where: { email }
+            where: { cedula }
         });
 
         if (existingUser) {
-            return res.status(400).json({ error: 'Email already exists' });
+            return res.status(400).json({ error: 'Cédula already exists' });
         }
 
         // Hash de la contraseña
@@ -63,7 +62,7 @@ export const createUser = async (req: Request, res: Response) => {
         // Crear usuario
         const user = await prisma.user.create({
             data: {
-                email,
+                cedula,
                 name,
                 passwordHash: hashedPassword,
                 roleId: parseInt(roleId),
@@ -71,7 +70,7 @@ export const createUser = async (req: Request, res: Response) => {
             },
             select: {
                 id: true,
-                email: true,
+                cedula: true,
                 name: true,
                 active: true,
                 role: {
@@ -84,7 +83,7 @@ export const createUser = async (req: Request, res: Response) => {
 
         res.status(201).json({
             id: user.id,
-            email: user.email,
+            cedula: user.cedula,
             name: user.name,
             active: user.active,
             role: user.role.name
@@ -112,7 +111,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
         }
 
         // Prevenir la desactivación del admin master
-        if (userToToggle.email === 'admin@example.com') {
+        if (userToToggle.cedula === '20393453') {
             return res.status(403).json({ error: 'Cannot modify admin master account' });
         }
 
@@ -121,7 +120,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
             data: { active: !userToToggle.active },
             select: {
                 id: true,
-                email: true,
+                cedula: true,
                 name: true,
                 active: true,
                 role: {
@@ -134,7 +133,7 @@ export const toggleUserStatus = async (req: Request, res: Response) => {
 
         res.json({
             id: updatedUser.id,
-            email: updatedUser.email,
+            cedula: updatedUser.cedula,
             name: updatedUser.name,
             active: updatedUser.active,
             role: updatedUser.role.name

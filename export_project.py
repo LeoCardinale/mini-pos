@@ -22,7 +22,7 @@ def read_file_content(file_path):
 
 def should_ignore_file(file_path):
     # Lista de archivos específicos a ignorar
-    ignore_files = ['package-lock.json', 'README.md', 'export_project.py', 'full_project_source_code_v6.txt']
+    ignore_files = ['package-lock.json', 'README.md', 'export_project.py', 'project_source_code_v9.txt']
     file_name = os.path.basename(file_path)
     return file_name in ignore_files
 
@@ -60,7 +60,7 @@ ignore_dirs = ['node_modules', 'dist', 'build', 'out', '.git', '__pycache__']
 
 # Llamar a la función para exportar los archivos del proyecto
 root_dir = './'  # Ajusta según la ubicación de tu proyecto
-output_file = 'full_project_source_code_v8.txt'
+output_file = 'project_source_code_v9.txt'
 
 export_project_files(root_dir, output_file, ignore_dirs)
 

@@ -177,18 +177,21 @@ const SalesSummary: React.FC<SalesSummaryProps> = ({
                                         )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        {transaction.status === 'active' && currentRegister.status === 'open' && (
-                                            <button
-                                                onClick={() => {
-                                                    if (window.confirm(t('confirmations.cancelTransaction'))) {
-                                                        onCancelTransaction(transaction.id);
-                                                    }
-                                                }}
-                                                className="text-red-600 hover:text-red-900"
-                                            >
-                                                {t('common.cancel')}
-                                            </button>
-                                        )}
+                                        {transaction.status === 'active' &&
+                                            currentRegister.status === 'open' &&
+                                            !transaction.customerName?.includes('Prepaid:') &&
+                                            !transaction.customerName?.includes('Accumulated:') && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm(t('confirmations.cancelTransaction'))) {
+                                                            onCancelTransaction(transaction.id);
+                                                        }
+                                                    }}
+                                                    className="text-red-600 hover:text-red-900"
+                                                >
+                                                    {t('common.cancel')}
+                                                </button>
+                                            )}
                                     </td>
                                 </tr>
                             ))}

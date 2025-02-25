@@ -71,6 +71,44 @@ const AccountsPage = () => {
     const openAccounts = accounts.filter(account => account.status === 'open');
     const closedAccounts = accounts.filter(account => account.status === 'closed');
 
+    // Subdividimos las cuentas abiertas por tipo
+    const openPrepaidAccounts = openAccounts.filter(account => account.type === AccountType.PREPAID);
+    const openAccumulatedAccounts = openAccounts.filter(account => account.type === AccountType.ACCUMULATED);
+
+    // Subdividimos las cuentas cerradas por tipo
+    const closedPrepaidAccounts = closedAccounts.filter(account => account.type === AccountType.PREPAID);
+    const closedAccumulatedAccounts = closedAccounts.filter(account => account.type === AccountType.ACCUMULATED);
+
+    // Renderizar las cuentas agrupadas
+    const renderAccountGroup = (accounts: Account[]) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {accounts.map(account => (
+                <div
+                    key={account.id}
+                    onClick={() => navigate(`/accounts/${account.id}`)}
+                    className="bg-white p-4 rounded-lg shadow cursor-pointer hover:shadow-md transition-shadow"
+                >
+                    <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-medium">{account.customerName}</h3>
+                        <span className={`px-2 py-1 rounded-full text-xs ${account.status === 'open'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                            }`}>
+                            {account.status === 'open' ? t('accounts.open') : t('accounts.closed')}
+                        </span>
+                    </div>
+                    <div className="text-sm text-gray-500">
+                        <p>{t('common.type')}: {account.type === AccountType.PREPAID ? t('accounts.prepaid') : t('accounts.accumulated')}</p>
+                        <p>{t('accounts.openedAt')}: {account.openedAt.toLocaleString()}</p>
+                        {account.creditLimit && (
+                            <p>{t('accounts.creditLimit')}: ${account.creditLimit}</p>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
@@ -92,32 +130,27 @@ const AccountsPage = () => {
             {/* Cuentas Abiertas */}
             <div className="mb-8">
                 <h2 className="text-xl font-semibold mb-4">{t('accounts.openAccounts')}</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {openAccounts.map(account => (
-                        <div
-                            key={account.id}
-                            onClick={() => navigate(`/accounts/${account.id}`)}
-                            className="bg-white p-4 rounded-lg shadow cursor-pointer hover:shadow-md transition-shadow"
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="font-medium">{account.customerName}</h3>
-                                <span className={`px-2 py-1 rounded-full text-xs ${account.status === 'open'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                    }`}>
-                                    {account.status}
-                                </span>
-                            </div>
-                            <div className="text-sm text-gray-500">
-                                <p>{t('common.type')}: {account.type === 'PREPAID' ? t('accounts.prepaid') : t('accounts.accumulated')}</p>
-                                <p>{t('accounts.openedAt')}: {account.openedAt.toLocaleString()}</p>
-                                {account.creditLimit && (
-                                    <p>{t('accounts.creditLimit')}: ${account.creditLimit}</p>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+
+                {/* Cuentas Prepago Abiertas */}
+                {openPrepaidAccounts.length > 0 && (
+                    <div className="mb-6">
+                        <h3 className="text-lg font-medium italic mb-3">{t('accounts.prepaid')}</h3>
+                        {renderAccountGroup(openPrepaidAccounts)}
+                    </div>
+                )}
+
+                {/* Cuentas Acumuladas Abiertas */}
+                {openAccumulatedAccounts.length > 0 && (
+                    <div className="mb-6">
+                        <h3 className="text-lg font-medium italic mb-3">{t('accounts.accumulated')}</h3>
+                        {renderAccountGroup(openAccumulatedAccounts)}
+                    </div>
+                )}
+
+                {/* Si no hay cuentas abiertas */}
+                {openAccounts.length === 0 && (
+                    <p className="text-gray-500">{t('accounts.noOpenAccounts')}</p>
+                )}
             </div>
 
             {/* Separador */}
@@ -126,34 +159,30 @@ const AccountsPage = () => {
             {/* Cuentas Cerradas */}
             <div>
                 <h2 className="text-xl font-semibold mb-4">{t('accounts.closedAccounts')}</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {closedAccounts.map(account => (
-                        <div
-                            key={account.id}
-                            onClick={() => navigate(`/accounts/${account.id}`)}
-                            className="bg-white p-4 rounded-lg shadow cursor-pointer hover:shadow-md transition-shadow opacity-75"
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="font-medium">{account.customerName}</h3>
-                                <span className={`px-2 py-1 rounded-full text-xs ${account.status === 'open'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                    }`}>
-                                    {account.status}
-                                </span>
-                            </div>
-                            <div className="text-sm text-gray-500">
-                                <p>{t('common.type')}: {account.type === 'PREPAID' ? t('accounts.prepaid') : t('accounts.accumulated')}</p>
-                                <p>{t('accounts.openedAt')}: {account.openedAt.toLocaleString()}</p>
-                                {account.creditLimit && (
-                                    <p>{t('accounts.creditLimit')}: ${account.creditLimit}</p>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+
+                {/* Cuentas Prepago Cerradas */}
+                {closedPrepaidAccounts.length > 0 && (
+                    <div className="mb-6">
+                        <h3 className="text-lg font-medium italic mb-3">{t('accounts.prepaid')}</h3>
+                        {renderAccountGroup(closedPrepaidAccounts)}
+                    </div>
+                )}
+
+                {/* Cuentas Acumuladas Cerradas */}
+                {closedAccumulatedAccounts.length > 0 && (
+                    <div className="mb-6">
+                        <h3 className="text-lg font-medium italic mb-3">{t('accounts.accumulated')}</h3>
+                        {renderAccountGroup(closedAccumulatedAccounts)}
+                    </div>
+                )}
+
+                {/* Si no hay cuentas cerradas */}
+                {closedAccounts.length === 0 && (
+                    <p className="text-gray-500">{t('accounts.noClosedAccounts')}</p>
+                )}
             </div>
 
+            {/* Modal de formulario */}
             {showForm && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">

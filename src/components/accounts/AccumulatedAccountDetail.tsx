@@ -266,6 +266,63 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
         }
     };
 
+    const handleCancelConsumption = async (transaction: AccountTransaction) => {
+        try {
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
+
+            // Solo permitir cancelar transacciones de tipo 'debit' (consumos)
+            if (transaction.type !== 'debit') {
+                setError(t('errors.canOnlyCancelConsumptions'));
+                return;
+            }
+
+            // Calcular el balance actual
+            const totalDebit = transactions
+                .filter(t => t.type === 'debit' && t.status === 'active')
+                .reduce((sum, t) => sum + t.amount, 0);
+
+            const totalCredit = transactions
+                .filter(t => t.type === 'credit' && t.status === 'active')
+                .reduce((sum, t) => sum + t.amount, 0);
+
+            const currentBalance = totalDebit - totalCredit;
+
+            // Verificar que la cancelación no resultará en un balance positivo
+            if (currentBalance - transaction.amount < 0) {
+                setError(t('errors.cancellationWouldResultInPositiveBalance'));
+                return;
+            }
+
+            if (!window.confirm(t('confirmations.cancelConsumption'))) {
+                return;
+            }
+
+            // Marcar la transacción como cancelada
+            // await fetch(`${config.apiUrl}/accounts/${account.id}/transactions/${transaction.id}/cancel`, {
+            //     method: 'PUT',
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //         'Authorization': `Bearer ${localStorage.getItem('token')}`
+            //     }
+            // });
+            await accountOperations.cancelTransaction(
+                account.id,
+                transaction.id,
+                user.id,
+                account.type,
+                transaction.items || []
+            );
+
+            // Actualizar datos
+            await loadTransactions();
+            onUpdate();
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Error cancelling consumption');
+        }
+    };
+
     if (isLoading) return <div>{t('common.loading')}</div>;
 
     return (
@@ -282,7 +339,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                 <div className="space-y-2">
                     <span className={`block px-3 py-1 rounded-full text-sm text-center ${account.status === 'open' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                         }`}>
-                        {account.status}
+                        {account.status === 'open' ? t('accounts.open') : t('accounts.closed')}
                     </span>
                     <p className={`text-lg font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                         {t('accounts.balance')}: ${Math.abs(balance).toFixed(2)}
@@ -358,6 +415,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.type')}</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.details')}</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.amount')}</th>
+                            {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.actions')}</th> */}
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -393,6 +451,18 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                                         {transaction.currency === 'USD' ? '$' : 'Bs.'} {transaction.amount.toFixed(2)}
                                     </span>
                                 </td>
+                                {/* <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    {transaction.type === 'debit' &&
+                                        transaction.status === 'active' &&
+                                        account.status === 'open' && (
+                                            <button
+                                                onClick={() => handleCancelConsumption(transaction)}
+                                                className="text-red-600 hover:text-red-900"
+                                            >
+                                                {t('common.cancel')}
+                                            </button>
+                                        )}
+                                </td> */}
                             </tr>
                         ))}
                     </tbody>

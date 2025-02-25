@@ -1,17 +1,40 @@
 // src/components/Navigation.tsx
-import React from 'react';
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { cashRegisterOperations } from '../lib/database';
+import { config } from '../config';
+import ChangePasswordModal from './auth/ChangePasswordModal';
 
 
 const Navigation = () => {
     const { user, logout } = useAuth();
     const location = useLocation();
     const { t } = useTranslation();
+    const [showChangePassword, setShowChangePassword] = useState(false);
 
     if (!user) return null;
+
+    const handleChangePassword = async (currentPassword: string, newPassword: string) => {
+        try {
+            const response = await fetch(`${config.apiUrl}/auth/change-password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ currentPassword, newPassword })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            throw error;
+        }
+    };
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -112,25 +135,39 @@ const Navigation = () => {
                             </Link>
                         )}
 
-                        <Link
-                            to="/reports/sales"
-                            className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/reports/sales')
-                                ? 'bg-blue-500 text-white'
-                                : 'text-gray-700 hover:bg-blue-50'
-                                }`}
-                        >
-                            {t('nav.salesReport')}
-                        </Link>
-                        <span className="text-sm text-gray-700">
-                            {user.name} ({user.role})
-                        </span>
+                        {user.role === 'admin' && (
+                            <Link
+                                to="/reports/sales"
+                                className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/reports/sales')
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-700 hover:bg-blue-50'
+                                    }`}
+                            >
+                                {t('nav.salesReport')}
+                            </Link>
+                        )}
+
                         <button
-                            onClick={handleLogout}  // Cambiar onClick={logout} por onClick={handleLogout}
+                            onClick={() => setShowChangePassword(true)}
+                            className="text-sm text-gray-700 hover:text-blue-600"
+                        >
+                            ⚙️{user.name} ({user.role})
+                        </button>
+
+                        <button
+                            onClick={handleLogout}
                             className="px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50"
                         >
                             {t('nav.logout')}
                         </button>
                     </div>
+
+                    {showChangePassword && (
+                        <ChangePasswordModal
+                            onSubmit={handleChangePassword}
+                            onClose={() => setShowChangePassword(false)}
+                        />
+                    )}
                 </div>
             </div>
         </nav>

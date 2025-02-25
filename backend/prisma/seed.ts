@@ -56,10 +56,10 @@ async function main() {
         const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
         await prisma.$executeRaw`
-            INSERT INTO "User" (id, email, name, "passwordHash", "roleId", active, "createdAt", "updatedAt")
+            INSERT INTO "User" (id, cedula, name, "passwordHash", "roleId", active, "createdAt", "updatedAt")
             VALUES (
                 gen_random_uuid(),
-                'admin@example.com',
+                '12345678',
                 'Admin User',
                 ${hashedPassword},
                 (SELECT id FROM "Role" WHERE name = 'admin'),
@@ -67,7 +67,7 @@ async function main() {
                 NOW(),
                 NOW()
             )
-            ON CONFLICT (email) DO NOTHING;
+            ON CONFLICT (cedula) DO NOTHING;
         `;
 
         console.log('Seed completed successfully');

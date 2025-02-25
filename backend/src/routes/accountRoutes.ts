@@ -4,7 +4,8 @@ import {
     createAccount, getAccounts, addPrepaidProducts,
     getPrepaidProducts, consumePrepaidProduct, addAccumulatedItems,
     makePayment, closeAccount, getAccountReport,
-    getAccount, getAccountTransactions, addAccountTransaction
+    getAccount, getAccountTransactions, addAccountTransaction,
+    cancelAccountTransaction
 } from '../controllers/accountController';
 
 const router = Router();
@@ -21,6 +22,7 @@ router.get('/:id/report', authenticate, getAccountReport);
 router.get('/:id', authenticate, getAccount);
 router.get('/:id/transactions', authenticate, getAccountTransactions);
 router.post('/:id/transactions', authenticate, addAccountTransaction);
+router.put('/:accountId/transactions/:transactionId/cancel', authenticate, cancelAccountTransaction);
 
 
 export default router;

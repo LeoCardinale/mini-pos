@@ -180,28 +180,35 @@ class SyncService {
                     }
                 }
                 break;
+
+            case 'inventoryLog':
+                // Aquí no necesitamos hacer nada especial, solo registrar que se procesó
+                console.log('Processed inventoryLog operation');
+                break;
         }
     }
 
     private async applyProductOperation(type: string, data: any): Promise<void> {
         try {
-            // Verificar si el producto ya existe por nombre o código de barras
-            const existingProduct = await prisma.product.findFirst({
-                where: {
-                    OR: [
-                        { name: data.name },
-                        { barcode: data.barcode }
-                    ]
-                }
-            });
+            if (type === 'create') {
+                // Verificar duplicados solo para creación
+                const existingProduct = await prisma.product.findFirst({
+                    where: {
+                        OR: [
+                            { name: data.name },
+                            { barcode: data.barcode }
+                        ]
+                    }
+                });
 
-            if (existingProduct) {
-                return;
+                if (existingProduct) {
+                    return;
+                }
             }
 
             const {
                 lastUpdated,
-                id,  // Eliminamos el id del payload ya que Prisma lo autogenerará
+                id,
                 createdAt,
                 updatedAt,
                 supplierId,
@@ -215,13 +222,17 @@ class SyncService {
                 supplier: supplierId ? {
                     connect: { id: supplierId }
                 } : undefined,
-                creator: {
+                creator: createdBy ? {
                     connect: { id: createdBy }
-                },
-                updater: {
-                    connect: { id: updatedBy }
-                }
+                } : undefined
             };
+
+            // Solo incluye updater si updatedBy está definido
+            if (updatedBy) {
+                productData.updater = {
+                    connect: { id: updatedBy }
+                };
+            }
 
             switch (type) {
                 case 'create':
@@ -230,6 +241,25 @@ class SyncService {
                     });
                     break;
                 case 'update':
+                    // Para update, verificamos primero si el producto existe y si tiene el mismo estado
+                    const existingForUpdate = await prisma.product.findUnique({
+                        where: { id: data.id }
+                    });
+
+                    if (!existingForUpdate) {
+                        console.log(`Product with id ${data.id} not found for update`);
+                        return;
+                    }
+
+                    // Si el stock ya es el mismo, evitamos actualizar
+                    if (existingForUpdate.stock === data.stock &&
+                        existingForUpdate.price === data.price &&
+                        existingForUpdate.cost === data.cost) {
+                        console.log(`Product ${data.name} already has the same values, skipping update`);
+                        return;
+                    }
+
+                    // Ahora sí actualizamos
                     await prisma.product.update({
                         where: { id: data.id },
                         data: productData

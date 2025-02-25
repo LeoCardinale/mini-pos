@@ -5,14 +5,14 @@ import { config } from '../config';
 
 interface User {
     id: string;
-    email: string;
+    cedula: string;
     name: string;
     role: string;
 }
 
 interface AuthContextType {
     user: User | null;
-    login: (email: string, password: string) => Promise<void>;
+    login: (cedula: string, password: string) => Promise<void>;
     logout: () => void;
     isLoading: boolean;
 }
@@ -54,14 +54,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const login = async (email: string, password: string) => {
+    const login = async (cedula: string, password: string) => {
         try {
             const response = await fetch(`${config.apiUrl}/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({ cedula, password })
             });
 
             if (!response.ok) {
@@ -74,6 +74,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // Iniciar sincronización después del login exitoso
             syncClient.start();
+
+            // Sincronizar los logs de inventario
+            try {
+                const { inventoryLogOperations } = await import('../lib/database');
+                await inventoryLogOperations.syncWithServer();
+            } catch (error) {
+                console.error('Error syncing inventory logs after login:', error);
+            }
         } catch (error) {
             throw new Error('Login failed');
         }

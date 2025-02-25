@@ -10,7 +10,7 @@ import { config } from '../../config';
 interface User {
     id: string;
     name: string;
-    email: string;
+    cedula: string;
     role: string;
     active: boolean;
 }
@@ -111,7 +111,7 @@ const UsersPage = () => {
                                 {t('common.name')}
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                {t('common.email')}
+                                {t('users.cedula')}
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                                 {t('common.role')}
@@ -128,7 +128,7 @@ const UsersPage = () => {
                         {users.map((user) => (
                             <tr key={user.id}>
                                 <td className="px-6 py-4 whitespace-nowrap">{user.name}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">{user.email}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">{user.cedula}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">{user.role}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.active
@@ -141,7 +141,7 @@ const UsersPage = () => {
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <button
                                         onClick={() => handleToggleStatus(user.id)}
-                                        disabled={user.email === 'admin@example.com'}
+                                        disabled={user.cedula === '20393453'}
                                         className={`text-${user.active ? 'red' : 'green'}-600 hover:text-${user.active ? 'red' : 'green'}-900 disabled:opacity-50`}
                                     >
                                         {t(`users.${user.active ? 'deactivate' : 'activate'}`)}

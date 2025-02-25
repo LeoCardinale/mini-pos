@@ -43,7 +43,10 @@
         "id": "ID",
         "complete": "Completar",
         "wallet": "Billetera",
-        "password": "Contraseña"
+        "password": "Contraseña",
+        "user": "Usuario",
+        "action": "Acción",
+        "description": "Descripción"
     },
     "nav": {
         "pos": "TPV",
@@ -62,7 +65,10 @@
         "activate": "Activar",
         "userRole": "Usuario",
         "adminRole": "Administrador",
-        "createUser": "Crear Usuario"
+        "createUser": "Crear Usuario",
+        "confirmPassword": "Confirmar Contraseña",
+        "cedula": "Cédula",
+        "enterCedula": "Ingrese su cédula"
     },
     "inventory": {
         "title": "Gestión de Inventario",
@@ -87,7 +93,20 @@
         "catFood": "Alimentos",
         "catSpirits": "Licores",
         "catWines": "Vinos",
-        "catOthers": "Otros"
+        "catOthers": "Otros",
+        "productsTab": "Productos",
+        "historyTab": "Historial",
+        "action": {
+            "created": "Creado",
+            "edited": "Editado",
+            "deleted": "Eliminado",
+            "stock_added": "Stock Agregado"
+        },
+        "addStock": "Agregar Stock",
+        "stockAdded": "Stock agregado exitosamente",
+        "errors": {
+            "addingStock": "Error al agregar stock"
+        }
     },
     "pos": {
         "currentOrder": "Orden Actual",
@@ -154,7 +173,13 @@
         "consume": "Consumir",
         "consumed": "Consumido",
         "paid": "Pagado",
-        "customerName": "Nombre del Cliente"
+        "customerName": "Nombre del Cliente",
+        "open": "Abierta",
+        "closed": "Cerrada",
+        "noOpenAccounts": "No hay cuentas abiertas",
+        "noClosedAccounts": "No hay cuentas cerradas",
+        "confirmConsumption": "Confirmar Consumo",
+        "transactionHistory": "Historial de Transacciones"
     },
     "suppliers": {
         "title": "Proveedores",
@@ -188,14 +213,20 @@
         "deleteProduct": "¿Está seguro que desea eliminar este producto?",
         "deleteSupplier": "¿Está seguro que desea eliminar este proveedor?",
         "cancelTransaction": "¿Está seguro que desea cancelar esta transacción?",
-        "logout": "¿Está seguro que desea cerrar sesión?"
+        "logout": "¿Está seguro que desea cerrar sesión?",
+        "cancelConsumption": "¿Está seguro que desea cancelar este consumo?"
     },
     "auth": {
         "signIn": "Iniciar Sesión",
         "signInTitle": "Iniciar sesión en su cuenta",
         "invalidCredentials": "Credenciales inválidas",
         "enterEmail": "Usuario",
-        "enterPassword": "Contraseña"
+        "enterPassword": "Contraseña",
+        "currentPassword": "Contraseña actual",
+        "newPassword": "Nueva contraseña",
+        "confirmNewPassword": "Confirmar nueva contraseña",
+        "enterCedula": "Ingrese su cédula",
+        "changePassword": "Cambiar Contraseña"
     },
     "validation": {
         "required": "{{field}} es requerido",
@@ -206,7 +237,12 @@
         "maxAccountsReached": "Se ha alcanzado el número máximo de cuentas activas",
         "insufficientQuantity": "Cantidad insuficiente",
         "exceedsBalance": "El monto no puede exceder el balance pendiente",
-        "pendingBalance": "La cuenta tiene balance pendiente"
+        "pendingBalance": "La cuenta tiene balance pendiente",
+        "passwordsDoNotMatch": "Las contraseñas no coinciden",
+        "passwordTooShort": "La contraseña debe tener mínimo 6 caracteres",
+        "cedulaRequired": "La cédula es requerida",
+        "invalidCedula": "Cédula inválida",
+        "duplicateCedula": "Esta cédula ya está registrada"
     },
     "errors": {
         "camera": {
@@ -221,7 +257,9 @@
             "payment": "Error al procesar el pago"
         },
         "generic": "Ha ocurrido un error",
-        "products": "Error al cargar productos"
+        "products": "Error al cargar productos",
+        "canOnlyCancelConsumptions": "Solo se pueden cancelar transacciones de consumo",
+        "cancellationWouldResultInPositiveBalance": "La cancelación resultaría en un balance positivo para el cliente"
     },
     "camera": {
         "initializing": "Inicializando cámara...",

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 // Interface para los datos del formulario (incluyendo confirmación)
 interface UserFormState {
     name: string;
-    email: string;
+    cedula: string;
     password: string;
     passwordConfirm: string;
     roleId: string;
@@ -14,7 +14,7 @@ interface UserFormState {
 // Interface para los datos que se envían al backend (sin confirmación)
 interface UserFormData {
     name: string;
-    email: string;
+    cedula: string;
     password: string;
     roleId: string;
 }
@@ -27,7 +27,7 @@ interface UserFormProps {
 const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
     const [formData, setFormData] = useState<UserFormState>({
         name: '',
-        email: '',
+        cedula: '',
         password: '',
         passwordConfirm: '',
         roleId: '2'
@@ -83,13 +83,21 @@ const UserForm: React.FC<UserFormProps> = ({ onSubmit, onCancel }) => {
 
             <div>
                 <label className="block text-sm font-medium text-gray-700">
-                    {t('common.email')}
+                    {t('users.cedula')}
                 </label>
                 <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
+                    type="text"  // Cambiamos a text pero con patrón numérico
+                    name="cedula"
+                    value={formData.cedula}
+                    onChange={(e) => {
+                        // Solo permitir números
+                        const value = e.target.value.replace(/[^0-9]/g, '');
+                        setFormData(prev => ({
+                            ...prev,
+                            cedula: value
+                        }));
+                    }}
+                    pattern="[0-9]*"  // Forzar solo números
                     required
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 
 const Login = () => {
-    const [email, setEmail] = useState('');
+    const [cedula, setCedula] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const { login } = useAuth();
@@ -18,7 +18,7 @@ const Login = () => {
         setError('');
 
         try {
-            await login(email, password);
+            await login(cedula, password);
             navigate('/inventory'); // Redirigir al inventario después del login
         } catch (err) {
             setError(t('auth.invalidCredentials'));
@@ -42,16 +42,20 @@ const Login = () => {
                 <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
                     <div className="space-y-4">
                         <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                                {t('auth.enterEmail')}
+                            <label htmlFor="cedula" className="block text-sm font-medium text-gray-700">
+                                {t('auth.enterCedula')}
                             </label>
                             <input
-                                id="email"
-                                type="email"
+                                id="cedula"
+                                type="text"
+                                pattern="[0-9]*"
                                 required
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                value={cedula}
+                                onChange={(e) => {
+                                    const value = e.target.value.replace(/[^0-9]/g, '');
+                                    setCedula(value);
+                                }}
+                                className="mt-1 block w-full rounded-md border-gray-300"
                             />
                         </div>
                         <div>

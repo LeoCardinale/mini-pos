@@ -7,7 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 // Definir la interfaz para el payload del token
 interface JWTPayload {
     userId: string;
-    email: string;
+    cedula: string;
     role: string;
 }
 

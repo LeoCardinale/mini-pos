@@ -96,7 +96,7 @@ model CashRegister {
 
 model User {
   id            String    @id @default(uuid())
-  email         String    @unique
+  cedula        String    @unique
   name          String
   passwordHash  String
   role          Role      @relation(fields: [roleId], references: [id])
@@ -197,12 +197,13 @@ model AccountTransaction {
     method      String?   // "cash" | "card" | "transfer"
     discount    Float     @default(0)
     note        String?
-    status      String    @default("active")
+    status      String    @default("active")  // 'active' | 'cancelled'
     createdAt   DateTime  @default(now())
     userId      String    
     user        User      @relation(fields: [userId], references: [id])
     account     Account   @relation(fields: [accountId], references: [id])
     items       AccountTransactionItem[]
+    cancelledTransactionId String?
 }
 
 model AccountTransactionItem {

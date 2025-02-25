@@ -166,85 +166,6 @@ class SyncClient extends EventEmitter {
         }
     }
 
-    private async cleanSync() {
-        const response = await fetch(`${this.apiUrl}/sync`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.getAuthToken()}`
-            },
-            body: JSON.stringify({
-                operations: [],
-                lastSyncTimestamp: 0,
-                deviceId: localStorage.getItem('deviceId') || 'unknown'
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Clean sync failed: ${response.statusText}`);
-        }
-
-        const syncResponse: SyncResponse = await response.json();
-        if (syncResponse.success) {
-            const db = await initDatabase();
-            // Limpiar y actualizar datos locales
-            await db.clear('products');
-            await this.applyRemoteOperations(syncResponse.operations);
-            this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
-        }
-    }
-
-    private async normalSync(pendingOperations: SyncOperation[]) {
-        const db = await initDatabase();
-        const token = this.getAuthToken();
-        if (!token) throw new Error('No auth token available');
-
-        const syncRequest: SyncRequest = {
-            operations: pendingOperations,
-            lastSyncTimestamp: this.lastSyncTimestamp,
-            deviceId: localStorage.getItem('deviceId') || 'unknown'
-        };
-
-        const response = await fetch(`${this.apiUrl}/sync`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(syncRequest)
-        });
-
-        if (!response.ok) {
-            // Si el error es 400 Bad Request y el mensaje indica que ya existe
-            const responseText = await response.text();
-            if (response.status === 400 && responseText.includes('already exists')) {
-                const tx = db.transaction('syncQueue', 'readwrite');
-                await Promise.all(
-                    pendingOperations.map(op =>
-                        tx.store.put({ ...op, status: 'completed' })
-                    )
-                );
-                await tx.done;
-                return;
-            }
-            throw new Error(`Sync failed: ${response.statusText}`);
-        }
-
-        const syncResponse: SyncResponse = await response.json();
-        if (syncResponse.success) {
-            const tx = db.transaction('syncQueue', 'readwrite');
-            await Promise.all(
-                pendingOperations.map(op =>
-                    tx.store.put({ ...op, status: 'completed' })
-                )
-            );
-            await tx.done;
-
-            await this.applyRemoteOperations(syncResponse.operations);
-            this.lastSyncTimestamp = syncResponse.lastSyncTimestamp;
-        }
-    }
-
     private scheduleSync() {
         this.intervalId = window.setInterval(() => {
             if (navigator.onLine) {
@@ -322,6 +243,27 @@ class SyncClient extends EventEmitter {
                             }
                         } catch (error) {
                             console.error('Error processing cash register:', error);
+                        }
+                        break;
+
+                    case 'inventoryLog':
+                        try {
+                            const inventoryLog = JSON.parse(operation.data);
+                            const db = await initDatabase();
+
+                            // Verificar si ya existe usando el ID como clave única
+                            const existingLog = await db.get('inventoryLogs', inventoryLog.id);
+                            if (!existingLog) {
+                                console.log(`Adding remote inventory log: ${inventoryLog.id}`);
+                                await db.add('inventoryLogs', {
+                                    ...inventoryLog,
+                                    synced: true
+                                });
+                            } else {
+                                console.log(`Inventory log ${inventoryLog.id} already exists, skipping`);
+                            }
+                        } catch (error) {
+                            console.error('Error processing inventory log:', error);
                         }
                         break;
                 }

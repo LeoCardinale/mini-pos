@@ -37,7 +37,7 @@ export const createAccount = async (req: Request, res: Response) => {
             where: { status: 'open' }
         });
 
-        if (activeAccounts >= 10) {
+        if (activeAccounts >= 30) {
             return res.status(400).json({ error: 'Maximum number of active accounts reached' });
         }
 
@@ -599,5 +599,98 @@ export const addAccountTransaction = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error adding transaction:', error);
         res.status(500).json({ error: 'Error adding transaction' });
+    }
+};
+
+export const cancelAccountTransaction = async (req: Request, res: Response) => {
+    try {
+        const { accountId, transactionId } = req.params;
+        const user = (req as AuthRequest).user;
+
+        if (!user) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
+
+        // Verificar que la cuenta existe y está abierta
+        const account = await prisma.account.findUnique({
+            where: { id: Number(accountId) }
+        });
+
+        if (!account || account.status !== 'open') {
+            return res.status(400).json({ error: 'Invalid or closed account' });
+        }
+
+        // Obtener la transacción
+        const transaction = await prisma.accountTransaction.findUnique({
+            where: { id: transactionId },
+            include: { items: true }
+        });
+
+        if (!transaction || transaction.accountId !== Number(accountId)) {
+            return res.status(404).json({ error: 'Transaction not found' });
+        }
+
+        if (transaction.status !== 'active') {
+            return res.status(400).json({ error: 'Transaction already cancelled' });
+        }
+
+        if (transaction.type !== 'debit') {
+            return res.status(400).json({ error: 'Only consumption transactions can be cancelled' });
+        }
+
+        await prisma.$transaction(async (prisma) => {
+            // Marcar transacción como cancelada
+            await prisma.accountTransaction.update({
+                where: { id: transactionId },
+                data: { status: 'cancelled' }
+            });
+
+            // Para cuentas prepago, restaurar cantidades consumidas
+            if (account.type === 'PREPAID') {
+                for (const item of transaction.items) {
+                    const prepaidProduct = await prisma.prepaidProduct.findFirst({
+                        where: {
+                            accountId: Number(accountId),
+                            productId: item.productId
+                        }
+                    });
+
+                    if (prepaidProduct) {
+                        await prisma.prepaidProduct.update({
+                            where: { id: prepaidProduct.id },
+                            data: {
+                                consumed: Math.max(0, prepaidProduct.consumed - item.quantity)
+                            }
+                        });
+                    }
+                }
+            }
+
+            // Crear registro de cancelación
+            await prisma.accountTransaction.create({
+                data: {
+                    accountId: Number(accountId),
+                    amount: transaction.amount,
+                    type: 'cancel',
+                    userId: user.userId,
+                    status: 'active',
+                    note: `Cancelled transaction ${transactionId} (${account.type})`,
+                    items: transaction.items ? {
+                        create: transaction.items.map(item => ({
+                            productId: item.productId,
+                            quantity: item.quantity,
+                            price: item.price
+                        }))
+                    } : undefined
+                }
+            });
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error cancelling transaction:', error);
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Error cancelling transaction'
+        });
     }
 };
