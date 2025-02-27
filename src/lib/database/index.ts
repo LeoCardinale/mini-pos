@@ -616,7 +616,7 @@ export const cashRegisterOperations = {
             status: 'pending'
         });
 
-        return id;
+        return Number(id);
     },
 
     async getById(id: number): Promise<CashRegister | undefined> {
@@ -651,10 +651,27 @@ export const cashRegisterOperations = {
         if (registers.length === 0) {
             return undefined;
         }
-        
+
         // Ordenamos por ID (que es incremental) para obtener el último
         registers.sort((a, b) => b.id - a.id);
         return registers[0];
+    },
+    async getCurrent(userId?: string): Promise<CashRegister | null> {
+        if (!userId) return null;
+
+        const db = await initDatabase();
+        const registers = await db.getAll('cashRegister');
+
+        // Filtrar por userId y ordenar por fecha de apertura (más reciente primero)
+        const userRegisters = registers
+            .filter(reg => reg.userId === userId)
+            .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
+
+        // Obtener el registro más reciente que no esté cerrado
+        const openRegister = userRegisters.find(reg => reg.status === 'open');
+
+        // Si hay un registro abierto, devolver ese, de lo contrario, devolver el más reciente
+        return openRegister || (userRegisters.length > 0 ? userRegisters[0] : null);
     }
 };
 
@@ -671,7 +688,8 @@ export const syncQueueOperations = {
             entity: op.entity as SyncEntityType,
             data: op.data,
             deviceId: op.deviceId,
-            status: op.status
+            status: op.status,
+            createdAt: new Date()
         }));
     },
 
@@ -681,7 +699,7 @@ export const syncQueueOperations = {
         await tx.store.add({
             ...operation,
             id: crypto.randomUUID(),
-            timestamp: operation.timestamp || Date.now(),
+            timestamp: Date.now(),
             createdAt: new Date()
         });
         await tx.done;
