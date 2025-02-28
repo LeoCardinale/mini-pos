@@ -180,6 +180,34 @@ class SyncService {
                     }
                 }
                 break;
+            case 'inventoryLog':
+                if (operation.type === 'create') {
+                    // Verificar si ya existe el log para evitar duplicados
+                    const existingLog = await prisma.inventoryLog.findFirst({
+                        where: {
+                            userId: data.userId,
+                            productId: data.productId,
+                            action: data.action,
+                            timestamp: {
+                                gte: new Date(data.timestamp - 5000), // 5 segundos de margen
+                                lte: new Date(data.timestamp + 5000)
+                            }
+                        }
+                    });
+
+                    if (!existingLog) {
+                        await prisma.inventoryLog.create({
+                            data: {
+                                timestamp: new Date(data.timestamp),
+                                product: { connect: { id: data.productId } },
+                                user: { connect: { id: data.userId } },
+                                action: data.action,
+                                description: data.description
+                            }
+                        });
+                    }
+                }
+                break;
         }
     }
 

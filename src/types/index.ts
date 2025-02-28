@@ -122,3 +122,13 @@ export interface WalletAmounts {
     transferUSD: number;
     cuentaBs: number;
 }
+
+export interface InventoryLog {
+    id: string;
+    timestamp: Date;
+    productId: number;
+    userId: string;
+    userName?: string;
+    action: 'create' | 'update' | 'delete' | 'addStock';
+    description: any;
+}

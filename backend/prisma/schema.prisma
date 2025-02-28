@@ -46,6 +46,7 @@ model Product {
     prepaidProducts PrepaidProduct[]
     accountItems    AccountTransactionItem[]
     salesRecords         SalesRecord[]
+    inventoryLogs   InventoryLog[]
 }
 
 model Transaction {
@@ -117,6 +118,7 @@ model User {
   accountsClosed    Account[]  @relation("AccountCloser")
   accountTransactions AccountTransaction[]
   salesRecords         SalesRecord[]
+  inventoryLogs   InventoryLog[]
 }
 
 model Role {
@@ -216,4 +218,15 @@ model SalesRecord {
     user        User      @relation(fields: [userId], references: [id])
 
     @@unique([sourceId, source])
+}
+
+model InventoryLog {
+    id          String    @id @default(uuid())
+    timestamp   DateTime  @default(now())
+    productId   Int
+    product     Product   @relation(fields: [productId], references: [id])
+    userId      String
+    user        User      @relation(fields: [userId], references: [id])
+    action      String    // 'create' | 'update' | 'delete' | 'addStock'
+    description Json      // Contiene detalles de la acción en formato JSON
 }

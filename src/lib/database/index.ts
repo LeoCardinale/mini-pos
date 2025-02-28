@@ -1,6 +1,6 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { config } from '../../config';
-import { Product, Transaction, AccountTransaction, CashRegister, Currency, Wallet, Account, AccountType, AccountTransactionItem, PrepaidProduct } from '../../types';
+import { Product, Transaction, AccountTransaction, CashRegister, Currency, Wallet, Account, AccountType, AccountTransactionItem, PrepaidProduct, InventoryLog, SyncEntityType } from '../../types';
 import { SyncOperation } from '../../types/sync';
 
 type CreateProductData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
@@ -44,6 +44,11 @@ interface DBSchema {
     accounts: {
         key: number;
         value: Account;
+    };
+    inventoryLogs: {
+        key: string;
+        value: InventoryLog;
+        indexes: { 'by-timestamp': number };
     };
 }
 
@@ -104,6 +109,11 @@ export const initDatabase = async () => {
             if (!db.objectStoreNames.contains('accounts')) {
                 db.createObjectStore('accounts', { keyPath: 'id' });
             }
+
+            if (!db.objectStoreNames.contains('inventoryLogs')) {
+                const logsStore = db.createObjectStore('inventoryLogs', { keyPath: 'id' });
+                logsStore.createIndex('by-timestamp', 'timestamp');
+            }
         },
     });
 
@@ -128,10 +138,10 @@ export const productOperations = {
     async create(product: CreateProductData) {
         try {
             const db = await initDatabase();
-            // En productOperations.create()
+
             const token = localStorage.getItem('token');
-            const tokenData = JSON.parse(atob(token!.split('.')[1]));
-            const userId = tokenData.userId;
+            const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
+            const userId = tokenData?.userId || 'unknown';
 
             const productToStore = {
                 ...product,
@@ -181,6 +191,28 @@ export const productOperations = {
                 }
             }
 
+            // Obtener info del usuario
+
+            const userName = tokenData?.name || 'Unknown User';
+
+            // Crear log
+            await inventoryLogOperations.create({
+                productId: productToStore.id,
+                userId,
+                userName,
+                action: 'create',
+                description: {
+                    product: productToStore.name,
+                    // No incluimos la imagen para mantener los logs ligeros
+                    changes: Object.entries(productToStore)
+                        .filter(([key]) => key !== 'imageUrl' && key !== 'id' && key !== 'createdAt' && key !== 'updatedAt')
+                        .map(([field, value]) => ({
+                            field,
+                            newValue: value
+                        }))
+                }
+            });
+
             return productToStore.id;
         } catch (error) {
             console.error('Error creating product:', error);
@@ -192,6 +224,7 @@ export const productOperations = {
         try {
             const db = await initDatabase();
             const existingProduct = await db.get('products', id);
+
             if (!existingProduct) {
                 throw new Error('Product not found');
             }
@@ -241,6 +274,48 @@ export const productOperations = {
                 }
             }
 
+            // Obtener info del usuario
+            const token = localStorage.getItem('token');
+            const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
+            const userId = tokenData?.userId || 'unknown';
+            const userName = tokenData?.name || 'Unknown User';
+
+            // Crear log solo si hay cambios
+            const changes = [];
+            for (const key in productData) {
+                if (Object.prototype.hasOwnProperty.call(productData, key) &&
+                    key !== 'updatedAt' &&
+                    productData[key as keyof typeof productData] !== existingProduct[key as keyof typeof existingProduct]) {
+                    // Caso especial para el campo imageUrl
+                    if (key === 'imageUrl') {
+                        changes.push({
+                            field: key,
+                            oldValue: existingProduct[key as keyof typeof existingProduct] ? 'Imagen anterior' : 'Sin imagen',
+                            newValue: productData[key as keyof typeof productData] ? 'Nueva imagen' : 'Sin imagen'
+                        });
+                    } else {
+                        changes.push({
+                            field: key,
+                            oldValue: existingProduct[key as keyof typeof existingProduct],
+                            newValue: productData[key as keyof typeof productData]
+                        });
+                    }
+                }
+            }
+
+            if (changes.length > 0) {
+                await inventoryLogOperations.create({
+                    productId: id,
+                    userId,
+                    userName,
+                    action: 'update',
+                    description: {
+                        product: existingProduct.name,
+                        changes
+                    }
+                });
+            }
+
             return updatedProduct;
         } catch (error) {
             console.error('Error updating product:', error);
@@ -252,6 +327,7 @@ export const productOperations = {
         try {
             const db = await initDatabase();
             const existingProduct = await db.get('products', id);
+
             if (!existingProduct) {
                 throw new Error('Product not found');
             }
@@ -288,6 +364,22 @@ export const productOperations = {
                     // No hacer nada más, la operación ya está en la cola de sync
                 }
             }
+            // Obtener info del usuario
+            const token = localStorage.getItem('token');
+            const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
+            const userId = tokenData?.userId || 'unknown';
+            const userName = tokenData?.name || 'Unknown User';
+
+            // Crear log
+            await inventoryLogOperations.create({
+                productId: id,
+                userId,
+                userName,
+                action: 'delete',
+                description: {
+                    product: existingProduct.name
+                }
+            });
         } catch (error) {
             console.error('Error deleting product:', error);
             throw error;
@@ -337,6 +429,7 @@ export const productOperations = {
     async addStock(id: number, quantity: number, cost?: number, price?: number, notes?: string) {
         try {
             const existingProduct = await this.getById(id);
+
             if (!existingProduct) {
                 throw new Error('Product not found');
             }
@@ -356,6 +449,26 @@ export const productOperations = {
 
             // Usar el método update existente
             const updatedProduct = await this.update(id, updateData);
+
+            // Obtener info del usuario
+            const token = localStorage.getItem('token');
+            const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
+            const userId = tokenData?.userId || 'unknown';
+            const userName = tokenData?.name || 'Unknown User';
+
+            // Crear log
+            await inventoryLogOperations.create({
+                productId: id,
+                userId,
+                userName,
+                action: 'addStock',
+                description: {
+                    product: existingProduct.name,
+                    quantity,
+                    newTotal: existingProduct.stock + quantity,
+                    notes: notes || undefined
+                }
+            });
 
             return updatedProduct;
         } catch (error) {
@@ -804,6 +917,111 @@ export const salesOperations = {
             ...saleData,
             createdAt: new Date(saleData.createdAt)
         });
+    }
+};
+
+export const inventoryLogOperations = {
+    async create(logData: Partial<InventoryLog>) {
+        const db = await initDatabase();
+        const id = crypto.randomUUID();
+        const fullLog = {
+            ...logData,
+            id,
+            timestamp: new Date()
+        };
+
+        await db.add('inventoryLogs', fullLog);
+
+        // Encolar para sincronización usando aserción de tipo
+        await syncQueueOperations.addOperation({
+            type: 'create',
+            entity: 'inventoryLog' as SyncEntityType,
+            data: JSON.stringify(fullLog),
+            deviceId: localStorage.getItem('deviceId') || 'unknown',
+            status: 'pending'
+        });
+
+        return id;
+    },
+
+    async getAll(limit = 100) {
+        const db = await initDatabase();
+        let logs = await db.getAll('inventoryLogs');
+        logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        return logs.slice(0, limit); // Limitar a los últimos 'limit' logs
+    },
+
+    async getPaginated(page = 1, pageSize = 20) {
+        try {
+            if (navigator.onLine) {
+                const offset = (page - 1) * pageSize;
+                const response = await fetch(`${config.apiUrl}/inventory-logs?limit=${pageSize}&offset=${offset}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Error fetching inventory logs');
+                }
+
+                const result = await response.json();
+
+                // Actualizar IndexedDB con los nuevos logs
+                const db = await initDatabase();
+                await Promise.all(result.logs.map(async (log: any) => {
+                    await db.put('inventoryLogs', {
+                        ...log,
+                        timestamp: new Date(log.timestamp)
+                    });
+                }));
+
+                return result;
+            }
+        } catch (error) {
+            console.error('Error fetching logs from server:', error);
+        }
+
+        // Fallback a datos locales si estamos offline o hay un error
+        const db = await initDatabase();
+        let logs = await db.getAll('inventoryLogs');
+        logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+        const offset = (page - 1) * pageSize;
+        const paginatedLogs = logs.slice(offset, offset + pageSize);
+
+        return {
+            logs: paginatedLogs,
+            totalCount: logs.length,
+            hasMore: logs.length > offset + pageSize
+        };
+    },
+
+    // Limpiar logs antiguos para mantener solo los últimos 100
+    async cleanupOldLogs() {
+        try {
+            const db = await initDatabase();
+            let logs = await db.getAll('inventoryLogs');
+
+            if (logs.length <= 100) return; // No hay necesidad de limpiar
+
+            // Ordenar por fecha descendente
+            logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+            // Obtener IDs de logs a eliminar (más allá de 100)
+            const logsToDelete = logs.slice(100);
+
+            // Eliminar logs antiguos
+            const tx = db.transaction('inventoryLogs', 'readwrite');
+            for (const log of logsToDelete) {
+                await tx.store.delete(log.id);
+            }
+            await tx.done;
+
+            console.log(`Cleaned up ${logsToDelete.length} old inventory logs`);
+        } catch (error) {
+            console.error('Error cleaning up old logs:', error);
+        }
     }
 };
 

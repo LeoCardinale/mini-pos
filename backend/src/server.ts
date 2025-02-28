@@ -11,7 +11,7 @@ import supplierRoutes from './routes/supplierRoutes';
 import transactionRoutes from './routes/transactionRoutes';
 import accountRoutes from './routes/accountRoutes';
 import salesRoutes from './routes/salesRoutes';
-
+import inventoryLogRoutes from './routes/inventoryLogRoutes';
 
 
 const app = express();
@@ -49,7 +49,7 @@ app.use('/api/accounts', accountRoutes);
 
 app.use('/api/sales', salesRoutes);
 
-
+app.use('/api/inventory-logs', authenticate, inventoryLogRoutes);
 
 
 // Manejo de errores global

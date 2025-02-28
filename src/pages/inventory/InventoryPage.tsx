@@ -1,13 +1,18 @@
 // src/pages/inventory/InventoryPage.tsx
 import React, { useState, useEffect } from 'react';
-import { Product } from '../../types';
-import { productOperations } from '../../lib/database';
+import { Product, InventoryLog } from '../../types';
+import { productOperations, inventoryLogOperations } from '../../lib/database';
 import ProductForm from '../../components/inventory/ProductForm';
 import SearchBar from '../../components/common/SearchBar';
 import { useTranslation } from 'react-i18next';
 import { Tab, TabGroup, TabPanels, TabPanel, TabList } from '@headlessui/react';
 import AddStockModal from '../../components/inventory/AddStockModal';
 
+type LogChange = {
+    field: string;
+    oldValue?: any;
+    newValue?: any;
+};
 
 const InventoryPage = () => {
     const [products, setProducts] = useState<Product[]>([]);
@@ -20,9 +25,18 @@ const InventoryPage = () => {
     const { t } = useTranslation();
     const [showAddStockModal, setShowAddStockModal] = useState(false);
     const [selectedProductForStock, setSelectedProductForStock] = useState<Product | null>(null);
+    const [logs, setLogs] = useState<InventoryLog[]>([]);
+    const [logsPage, setLogsPage] = useState(1);
+    const [hasMoreLogs, setHasMoreLogs] = useState(false);
+    const [isLoadingMoreLogs, setIsLoadingMoreLogs] = useState(false);
+
+    const refreshData = async () => {
+        await loadProducts();
+        await loadLogs(1, true);
+    };
 
     useEffect(() => {
-        loadProducts();
+        refreshData();
     }, []);
 
     const loadProducts = async () => {
@@ -56,7 +70,7 @@ const InventoryPage = () => {
 
         try {
             await productOperations.delete(productId);
-            loadProducts();
+            refreshData();
         } catch (err) {
             setError(t('errors.generic'));
         }
@@ -85,11 +99,47 @@ const InventoryPage = () => {
             );
 
             // Recargar datos
-            await loadProducts();
+            refreshData();
             setShowAddStockModal(false);
             setSelectedProductForStock(null);
         } catch (err) {
             setError(t('errors.addingStock'));
+        }
+    };
+
+    const loadLogs = async (page = 1, reset = false) => {
+        try {
+            setIsLoadingMoreLogs(true);
+            const result = await inventoryLogOperations.getPaginated(page, 20);
+
+            if (reset) {
+                setLogs(result.logs);
+            } else {
+                setLogs(prev => [...prev, ...result.logs]);
+            }
+
+            setHasMoreLogs(result.hasMore);
+            setLogsPage(page);
+        } catch (err) {
+            setError('Error cargando historial');
+        } finally {
+            setIsLoadingMoreLogs(false);
+        }
+    };
+
+    // Función para limpiar logs antiguos
+    const cleanupLogs = async () => {
+        await inventoryLogOperations.cleanupOldLogs();
+    };
+
+    useEffect(() => {
+        cleanupLogs();
+    }, []);
+
+    // Función para cargar más logs
+    const handleLoadMoreLogs = () => {
+        if (!isLoadingMoreLogs && hasMoreLogs) {
+            loadLogs(logsPage + 1);
         }
     };
 
@@ -297,47 +347,107 @@ const InventoryPage = () => {
                                         </th>
                                     </tr>
                                 </thead>
-                                {/*<tbody className="bg-white divide-y divide-gray-200">
+                                <tbody className="bg-white divide-y divide-gray-200">
                                     {logs.map((log) => (
                                         <tr key={log.id}>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                 {new Date(log.timestamp).toLocaleString()}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                {log.userName}
+                                                {log.userName || 'Usuario'}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                {t(`inventory.action.${log.action.toLowerCase()}`)}
+                                                {{
+                                                    'create': 'Creado',
+                                                    'update': 'Editado',
+                                                    'delete': 'Eliminado',
+                                                    'addStock': 'Stock Añadido'
+                                                }[log.action] || log.action}
                                             </td>
                                             <td className="px-6 py-4 text-sm">
                                                 <div className="max-w-xl">
                                                     <p className="font-medium">{log.description.product}</p>
-                                                    {log.description.changes && (
-                                                        <div className="mt-1">
-                                                            {log.description.changes.map((change, idx) => (
+
+                                                    {log.action === 'create' && log.description.changes && (
+                                                        <div className="mt-1 grid grid-cols-2 gap-2">
+                                                            {log.description.changes && log.description.changes.map((change: LogChange, idx: number) => (
                                                                 <div key={idx} className="text-gray-600">
-                                                                    {change.field}: {' '}
-                                                                    {change.field === 'imageUrl'
-                                                                        ? 'Nueva imagen'
-                                                                        : <>
-                                                                            {change.oldValue && <span className="line-through">{change.oldValue}</span>}
-                                                                            {change.oldValue && change.newValue && ' → '}
-                                                                            {change.newValue && <span>{change.newValue}</span>}
-                                                                        </>
-                                                                    }
+                                                                    <span className="font-medium">{change.field}:</span> {" "}
+                                                                    <span>{typeof change.newValue === 'object'
+                                                                        ? JSON.stringify(change.newValue)
+                                                                        : change.newValue}
+                                                                    </span>
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     )}
-                                                    {log.description.notes && (
-                                                        <p className="mt-1 text-gray-500 italic">{log.description.notes}</p>
+
+                                                    {log.action === 'update' && log.description.changes && (
+                                                        <div className="mt-1 space-y-1">
+                                                            {log.description.changes && log.description.changes.map((change: LogChange, idx: number) => (
+                                                                <div key={idx} className="text-gray-600">
+                                                                    <span className="font-medium">{change.field}:</span> {" "}
+                                                                    {change.oldValue !== undefined && (
+                                                                        <span className="line-through">
+                                                                            {typeof change.oldValue === 'object'
+                                                                                ? JSON.stringify(change.oldValue)
+                                                                                : change.oldValue}
+                                                                        </span>
+                                                                    )}
+                                                                    {change.oldValue !== undefined && change.newValue !== undefined && ' → '}
+                                                                    {change.newValue !== undefined && (
+                                                                        <span className="font-medium">
+                                                                            {typeof change.newValue === 'object'
+                                                                                ? JSON.stringify(change.newValue)
+                                                                                : change.newValue}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {log.action === 'addStock' && (
+                                                        <div className="mt-1 text-gray-600">
+                                                            <p>Cantidad añadida: <span className="font-medium">{log.description.quantity}</span></p>
+                                                            <p>Nuevo total: <span className="font-medium">{log.description.newTotal}</span></p>
+                                                            {log.description.notes && (
+                                                                <p className="mt-1 italic">Notas: {log.description.notes}</p>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {log.action === 'delete' && (
+                                                        <div className="mt-1 text-gray-600">
+                                                            Producto eliminado
+                                                        </div>
                                                     )}
                                                 </div>
                                             </td>
                                         </tr>
                                     ))}
-                                </tbody>*/}
+                                    {logs.length === 0 && (
+                                        <tr>
+                                            <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
+                                                No hay registros disponibles
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
                             </table>
+
+                            {/* Botón "Cargar más" */}
+                            {hasMoreLogs && (
+                                <div className="flex justify-center p-4 border-t border-gray-200">
+                                    <button
+                                        onClick={handleLoadMoreLogs}
+                                        disabled={isLoadingMoreLogs}
+                                        className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                                    >
+                                        {isLoadingMoreLogs ? t('common.loading') : t('common.loadMore')}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </TabPanel>
                 </TabPanels>
@@ -354,7 +464,7 @@ const InventoryPage = () => {
                             onSubmit={() => {
                                 setShowAddForm(false);
                                 setEditingProduct(null);
-                                loadProducts();
+                                refreshData();
                             }}
                             onCancel={() => {
                                 setShowAddForm(false);
