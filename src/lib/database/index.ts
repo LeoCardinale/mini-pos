@@ -332,6 +332,36 @@ export const productOperations = {
     async getById(id: number) {
         const db = await initDatabase();
         return db.get('products', id);
+    },
+
+    async addStock(id: number, quantity: number, cost?: number, price?: number, notes?: string) {
+        try {
+            const existingProduct = await this.getById(id);
+            if (!existingProduct) {
+                throw new Error('Product not found');
+            }
+
+            // Preparar los datos para la actualización
+            const updateData: UpdateProductData = {
+                stock: existingProduct.stock + quantity
+            };
+
+            if (cost !== undefined) {
+                updateData.cost = cost;
+            }
+
+            if (price !== undefined) {
+                updateData.price = price;
+            }
+
+            // Usar el método update existente
+            const updatedProduct = await this.update(id, updateData);
+
+            return updatedProduct;
+        } catch (error) {
+            console.error('Error adding stock:', error);
+            throw error;
+        }
     }
 };
 
