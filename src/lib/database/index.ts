@@ -1,6 +1,6 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { config } from '../../config';
-import { Product, Transaction, AccountTransaction, CashRegister, Currency, Wallet, Account, AccountTransactionItem, PrepaidProduct, SyncEntityType } from '../../types';
+import { Product, Transaction, AccountTransaction, CashRegister, Currency, Wallet, Account, AccountType, AccountTransactionItem, PrepaidProduct } from '../../types';
 import { SyncOperation } from '../../types/sync';
 
 type CreateProductData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
@@ -128,20 +128,21 @@ export const productOperations = {
     async create(product: CreateProductData) {
         try {
             const db = await initDatabase();
+            // En productOperations.create()
             const token = localStorage.getItem('token');
             const tokenData = JSON.parse(atob(token!.split('.')[1]));
-            const userName = tokenData.name;
+            const userId = tokenData.userId;
 
             const productToStore = {
                 ...product,
                 id: Date.now(),
                 createdAt: new Date(),
                 updatedAt: new Date(),
-                createdBy: userName,
-                updatedBy: userName
+                createdBy: userId,
+                updatedBy: userId
             };
 
-            // Guardamos primero localmente
+            // Siempre guardamos primero localmente
             await db.add('products', productToStore);
 
             // Crear entrada en la cola de sincronización
@@ -190,33 +191,16 @@ export const productOperations = {
     async update(id: number, productData: UpdateProductData) {
         try {
             const db = await initDatabase();
-            const token = localStorage.getItem('token');
-            const tokenData = JSON.parse(atob(token!.split('.')[1]));
-            const userName = tokenData.name;
-
             const existingProduct = await db.get('products', id);
             if (!existingProduct) {
                 throw new Error('Product not found');
             }
 
-            // Preparar datos de cambios para el log
-            const changes = Object.entries(productData)
-                .filter(([key, value]) => {
-                    if (key === 'imageUrl') return true;
-                    return existingProduct[key as keyof Product] !== value;
-                })
-                .map(([field, newValue]) => ({
-                    field,
-                    ...(field === 'imageUrl' ? {} : { oldValue: existingProduct[field as keyof Product] }),
-                    newValue
-                }));
-
-            // Actualizar producto
+            // Actualizar localmente primero
             const updatedProduct = {
                 ...existingProduct,
                 ...productData,
-                updatedAt: new Date(),
-                updatedBy: userName
+                updatedAt: new Date()
             };
 
             await db.put('products', updatedProduct);
@@ -348,36 +332,6 @@ export const productOperations = {
     async getById(id: number) {
         const db = await initDatabase();
         return db.get('products', id);
-    },
-
-    async addStock(id: number, quantity: number, cost?: number, price?: number, notes?: string) {
-        try {
-            const existingProduct = await this.getById(id);
-            if (!existingProduct) {
-                throw new Error('Product not found');
-            }
-
-            // Preparar los datos para la actualización
-            const updateData: UpdateProductData = {
-                stock: existingProduct.stock + quantity
-            };
-
-            if (cost !== undefined) {
-                updateData.cost = cost;
-            }
-
-            if (price !== undefined) {
-                updateData.price = price;
-            }
-
-            // Usar el método update existente
-            const updatedProduct = await this.update(id, updateData);
-
-            return updatedProduct;
-        } catch (error) {
-            console.error('Error adding stock:', error);
-            throw error;
-        }
     }
 };
 
@@ -386,7 +340,7 @@ export const transactionOperations = {
         const db = await initDatabase();
         const id = await db.add('transactions', transaction);
 
-        // Encolar para sincronizacion
+        // Encolar para sincronizaci贸n
         await enqueueSyncOperation({
             type: 'create',
             entity: 'transaction',
@@ -458,209 +412,310 @@ export const accountOperations = {
         accountId: number,
         items: Array<{ productId: number; quantity: number; price: number }>,
         userId: string,
+        accountType: 'PREPAID' | 'ACCUMULATED',
+        transactionType: 'debit' | 'credit',
         metadata?: AccountItemsMetadata
     ) {
+        console.log('Starting accountOperations.addItems', { accountId, items, accountType, transactionType });
+        const db = await initDatabase();
         try {
-            // Validar los productos
-            const db = await initDatabase();
-            for (const item of items) {
-                const product = await db.get('products', item.productId);
-                if (!product) {
-                    throw new Error(`Product ${item.productId} not found`);
+            // Actualizar stock localmente
+            if (transactionType === 'credit') {
+                const tx = db.transaction('products', 'readwrite');
+                const productStore = tx.objectStore('products');
+                for (const item of items) {
+                    const product = await productStore.get(item.productId);
+                    if (product) {
+                        product.stock -= item.quantity;
+                        await productStore.put(product);
+                    }
                 }
-
-                if (product.stock < item.quantity) {
-                    throw new Error(`Not enough stock for product ${product.name}`);
-                }
+                await tx.done;
             }
 
-            // Calcular el monto total
-            const total = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            const amount = metadata?.amount ?? total;
-            const discount = metadata?.discount ?? 0;
-            const currency = metadata?.currency ?? 'USD';
-            let wallet: Wallet = 'CASH_USD';
-            if (currency === 'USD') {
-                wallet = metadata?.method === 'transfer' ? 'TRANSFER_USD' : 'CASH_USD';
-            } else {
-                wallet = metadata?.method === 'transfer' ? 'CUENTA_BS' : 'CASH_BS';
-            }
-
-            // Obtener la cuenta
-            const account = await db.get('accounts', accountId);
-            if (!account) {
-                throw new Error('Account not found');
-            }
-
-            // Crear la transacción
-            const newTransaction: Omit<AccountTransaction, 'id'> = {
+            // Crear transacción local
+            const accountTx = db.transaction('accountTransactions', 'readwrite');
+            const amount = metadata?.amount || items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+            const accountTransaction: AccountTransaction = {
+                id: crypto.randomUUID(),
                 accountId,
                 amount,
-                type: 'debit',
-                accountType: account.type,
+                type: transactionType,
+                accountType,
                 createdAt: new Date(),
                 userId,
-                items: items.map((item, index) => ({
-                    id: index + 1,
-                    transactionId: `temp-${Date.now()}`, // Será reemplazado al guardarse
+                method: metadata?.method,
+                discount: metadata?.discount,
+                note: metadata?.note,
+                currency: metadata?.currency || 'USD',
+                wallet: (metadata?.method as Wallet) || 'CASH_USD',
+                items: items.map(item => ({
+                    id: 0,
+                    transactionId: '',
                     productId: item.productId,
                     quantity: item.quantity,
                     price: item.price
                 })),
-                method: metadata?.method,
-                note: metadata?.note,
-                discount,
-                currency,
-                wallet
+                status: 'active'
             };
+            await accountTx.store.add(accountTransaction);
+            await accountTx.done;
 
-            const transactionId = crypto.randomUUID();
-            const transaction = {
-                ...newTransaction,
-                id: transactionId,
-                items: newTransaction.items?.map(item => ({
-                    ...item,
-                    transactionId
-                }))
-            };
+            // Encolar para sincronización
+            await syncQueueOperations.addOperation({
+                type: 'create',
+                entity: 'accountTransaction',
+                data: JSON.stringify(accountTransaction),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
 
-            // Guardar la transacción
-            await db.add('accountTransactions', transaction);
-
-            // Actualizar stock de productos
-            for (const item of items) {
-                const product = await db.get('products', item.productId);
-                if (product) {
-                    product.stock -= item.quantity;
-                    await db.put('products', product);
-                }
+            // Añadir registro de venta si es necesario
+            if (transactionType === 'credit' || (accountType === 'ACCUMULATED' && transactionType === 'debit')) {
+                console.log('Creating salesRecord for account transaction:', {
+                    accountId,
+                    transactionType,
+                    accountType,
+                    items
+                });
             }
 
-            return transactionId;
+            console.log('Account transaction operation enqueued');
         } catch (error) {
-            console.error('Error adding items to account:', error);
+            console.error('Error in addItems:', error);
             throw error;
         }
     },
 
-    async getAll() {
+    async closeAccount(accountId: number, userId: string, accountType: 'PREPAID' | 'ACCUMULATED') {
+        console.log('Starting accountOperations.closeAccount', { accountId, accountType });
+
+        try {
+            // Encolar operación de cierre
+            await enqueueSyncOperation({
+                type: 'update',
+                entity: 'transaction',
+                data: JSON.stringify({
+                    accountId,
+                    operation: 'close',
+                    accountType,
+                    userId,
+                    timestamp: Date.now()
+                }),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
+
+            // Actualizar estado local
+            const db = await initDatabase();
+            const tx = db.transaction('accountTransactions', 'readwrite');
+            const index = tx.store.index('by-account');
+
+            // Marcar todas las transacciones de la cuenta como cerradas
+            const transactions = await index.getAll(accountId);
+            for (const transaction of transactions) {
+                transaction.status = 'closed';
+                await tx.store.put(transaction);
+            }
+
+            await tx.done;
+
+            console.log('Account close operation enqueued');
+        } catch (error) {
+            console.error('Error in closeAccount:', error);
+            throw error;
+        }
+    },
+
+    async cancelTransaction(
+        accountId: number,
+        transactionId: string,
+        userId: string,
+        accountType: 'PREPAID' | 'ACCUMULATED',
+        items: AccountTransactionItem[]
+    ): Promise<void> {
         const db = await initDatabase();
-        return await db.getAll('accounts');
+
+        try {
+            // 1. Marcar la transacción original como cancelada
+            const tx = db.transaction(['accountTransactions'], 'readwrite');
+            const accountTxStore = tx.objectStore('accountTransactions');
+            const originalTx = await accountTxStore.get(transactionId);
+            if (originalTx) {
+                originalTx.status = 'cancelled';
+                await accountTxStore.put(originalTx);
+            }
+
+            // 2. Crear la transacción de cancelación
+            const cancelTransaction: AccountTransaction = {
+                id: crypto.randomUUID(),
+                accountId,
+                amount: originalTx ? originalTx.amount : 0,
+                type: 'debit',
+                accountType,
+                createdAt: new Date(),
+                userId,
+                status: 'active',
+                note: `Cancelled transaction ${transactionId}`,
+                items,
+                currency: originalTx ? originalTx.currency : 'USD',
+                wallet: originalTx ? originalTx.wallet : 'CASH_USD'
+            };
+
+            await accountTxStore.add(cancelTransaction);
+            await tx.done;
+
+            // 3. Encolar para sincronización
+            await syncQueueOperations.addOperation({
+                type: 'create',
+                entity: 'accountTransaction',
+                data: JSON.stringify(cancelTransaction),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
+
+            // 4. Para cuentas PREPAID, necesitamos recalcular el estado de los productos
+            if (accountType === 'PREPAID') {
+                const allTxTx = db.transaction(['accountTransactions', 'products'], 'readonly');
+                const index = allTxTx.objectStore('accountTransactions').index('by-account');
+                const productsStore = allTxTx.objectStore('products');
+
+                // Obtener todas las transacciones de la cuenta
+                const transactions = await index.getAll(accountId);
+                const prepaidTransactions = transactions.filter(t =>
+                    t.accountType === 'PREPAID' &&
+                    t.status !== 'cancelled' // Ignorar transacciones canceladas
+                );
+
+                // Recalcular el estado de los productos
+                const productMap = new Map<number, PrepaidProduct>();
+
+                for (const tx of prepaidTransactions) {
+                    if (tx.items) {
+                        for (const item of tx.items) {
+                            const product = await productsStore.get(item.productId);
+
+                            if (!productMap.has(item.productId)) {
+                                productMap.set(item.productId, {
+                                    id: item.productId,
+                                    accountId,
+                                    productId: item.productId,
+                                    paid: 0,
+                                    consumed: 0,
+                                    product
+                                });
+                            }
+
+                            const prepaidProduct = productMap.get(item.productId)!;
+                            if (tx.type === 'credit') {
+                                prepaidProduct.paid += item.quantity;
+                            } else if (tx.type === 'debit') {
+                                prepaidProduct.consumed += item.quantity;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error in cancelTransaction:', error);
+            throw error;
+        }
+    }
+};
+
+// Operaciones de caja registradora
+export const cashRegisterOperations = {
+    async create(register: Omit<CashRegister, 'id'>) {
+        const db = await initDatabase();
+        const data = {
+            ...register,
+            deviceId: localStorage.getItem('deviceId') || 'unknown'
+        };
+        const id = await db.add('cashRegister', data);
+
+        await enqueueSyncOperation({
+            type: 'create',
+            entity: 'cashRegister',
+            data: JSON.stringify({ ...data, id }),
+            deviceId: data.deviceId,
+            status: 'pending'
+        });
+
+        return id;
+    },
+
+    async update(id: number, data: Partial<CashRegister>) {
+        const db = await initDatabase();
+        console.log('Updating register:', id, 'with data:', data);
+        const existing = await db.get('cashRegister', id);
+        console.log('Existing register:', existing);
+        if (!existing) throw new Error('Register not found');
+
+        const updated = { ...existing, ...data };
+        console.log('Updated register data:', updated);
+
+        try {
+            await db.put('cashRegister', updated);
+            console.log('Register updated in IndexedDB');
+
+            // Resto del codigo...
+        } catch (error) {
+            console.error('Error updating register:', error);
+            throw error;
+        }
+
+        return updated;
     },
 
     async getById(id: number) {
         const db = await initDatabase();
-        return await db.get('accounts', id);
-    },
-
-    async getTransactions(accountId: number) {
-        const db = await initDatabase();
-        const tx = db.transaction('accountTransactions', 'readonly');
-        const index = tx.store.index('by-account');
-        return await index.getAll(accountId);
-    }
-};
-
-export const cashRegisterOperations = {
-    async create(register: Omit<CashRegister, 'id'>): Promise<number> {
-        const db = await initDatabase();
-        const id = await db.add('cashRegister', {
-            ...register,
-            openedAt: new Date(register.openedAt)
-        });
-
-        await syncQueueOperations.addOperation({
-            type: 'create',
-            entity: 'cashRegister',
-            data: JSON.stringify({ ...register, id }),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
-            status: 'pending'
-        });
-
-        return Number(id);
-    },
-
-    async getById(id: number): Promise<CashRegister | undefined> {
-        const db = await initDatabase();
         return await db.get('cashRegister', id);
     },
 
-    async update(id: number, data: Partial<CashRegister>): Promise<CashRegister> {
-        const db = await initDatabase();
-        const existingRegister = await db.get('cashRegister', id);
-        if (!existingRegister) {
-            throw new Error('Cash register not found');
-        }
-
-        const updatedRegister = { ...existingRegister, ...data };
-        await db.put('cashRegister', updatedRegister);
-
-        await syncQueueOperations.addOperation({
-            type: 'update',
-            entity: 'cashRegister',
-            data: JSON.stringify(updatedRegister),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
-            status: 'pending'
-        });
-
-        return updatedRegister;
-    },
-
-    async getLatest(): Promise<CashRegister | undefined> {
-        const db = await initDatabase();
-        const registers = await db.getAll('cashRegister');
-        if (registers.length === 0) {
-            return undefined;
-        }
-
-        // Ordenamos por ID (que es incremental) para obtener el último
-        registers.sort((a, b) => b.id - a.id);
-        return registers[0];
-    },
-    async getCurrent(userId?: string): Promise<CashRegister | null> {
+    async getCurrent(userId?: string) {
         if (!userId) return null;
 
         const db = await initDatabase();
-        const registers = await db.getAll('cashRegister');
+        try {
+            const tx = db.transaction('cashRegister', 'readonly');
+            const registers = await tx.store.getAll();
+            await tx.done;
 
-        // Filtrar por userId y ordenar por fecha de apertura (más reciente primero)
-        const userRegisters = registers
-            .filter(reg => reg.userId === userId)
-            .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
+            const currentRegister = registers
+                .filter(reg => reg.userId === userId && reg.status === 'open')
+                .pop();
 
-        // Obtener el registro más reciente que no esté cerrado
-        const openRegister = userRegisters.find(reg => reg.status === 'open');
-
-        // Si hay un registro abierto, devolver ese, de lo contrario, devolver el más reciente
-        return openRegister || (userRegisters.length > 0 ? userRegisters[0] : null);
+            return currentRegister || null;
+        } catch (error) {
+            console.error('Error getting current register:', error);
+            return null;
+        }
     }
 };
 
+// Operaciones de la cola de sincronizacion
 export const syncQueueOperations = {
     async getPendingOperations(): Promise<SyncOperation[]> {
         const db = await initDatabase();
         const tx = db.transaction('syncQueue', 'readonly');
         const index = tx.store.index('by-status');
-        const operations = await index.getAll('pending');
-        return operations.map((op: SyncQueueItem) => ({
-            id: op.id,
-            timestamp: op.timestamp,
-            type: op.type,
-            entity: op.entity as SyncEntityType,
-            data: op.data,
-            deviceId: op.deviceId,
-            status: op.status,
-            createdAt: new Date()
-        }));
+        return await index.getAll('pending');
     },
 
-    async addOperation(operation: Omit<SyncOperation, 'id' | 'timestamp' | 'createdAt'>) {
+    async addOperation(operation: {
+        type: 'create' | 'update' | 'delete';
+        entity: 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord' | 'report';
+        data: string;
+        deviceId: string;
+        status: 'pending' | 'completed' | 'failed';
+        timestamp?: number;
+    }): Promise<void> {
         const db = await initDatabase();
         const tx = db.transaction('syncQueue', 'readwrite');
         await tx.store.add({
             ...operation,
             id: crypto.randomUUID(),
-            timestamp: Date.now(),
+            timestamp: operation.timestamp || Date.now(),
             createdAt: new Date()
         });
         await tx.done;
