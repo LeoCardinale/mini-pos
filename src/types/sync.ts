@@ -28,4 +28,4 @@ export type NewSyncOperation = Omit<SyncOperation, 'id' | 'createdAt' | 'timesta
 };
 
 // Re-exportar el tipo SyncEntityType para mantener la consistencia
-export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord' | 'report' | 'inventoryLog';
+export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord' | 'report';

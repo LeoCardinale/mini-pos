@@ -1,7 +1,7 @@
 // src/pages/inventory/InventoryPage.tsx
 import React, { useState, useEffect } from 'react';
-import { Product, InventoryLog } from '../../types';
-import { productOperations, inventoryLogOperations } from '../../lib/database';
+import { Product } from '../../types';
+import { productOperations } from '../../lib/database';
 import ProductForm from '../../components/inventory/ProductForm';
 import SearchBar from '../../components/common/SearchBar';
 import { useTranslation } from 'react-i18next';
@@ -18,13 +18,11 @@ const InventoryPage = () => {
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const { t } = useTranslation();
-    const [logs, setLogs] = useState<InventoryLog[]>([]);
     const [showAddStockModal, setShowAddStockModal] = useState(false);
     const [selectedProductForStock, setSelectedProductForStock] = useState<Product | null>(null);
 
     useEffect(() => {
         loadProducts();
-        loadLogs();
     }, []);
 
     const loadProducts = async () => {
@@ -74,15 +72,6 @@ const InventoryPage = () => {
             (product.barcode && product.barcode.toLowerCase().includes(searchLower));
     });
 
-    const loadLogs = async () => {
-        try {
-            const allLogs = await inventoryLogOperations.getAll();
-            setLogs(allLogs.sort((a, b) => b.timestamp - a.timestamp));
-        } catch (err) {
-            setError(t('errors.loadingLogs'));
-        }
-    };
-
     const handleAddStock = async (data: { quantity: number; cost: number; price: number; notes?: string }) => {
         try {
             if (!selectedProductForStock) return;
@@ -97,7 +86,6 @@ const InventoryPage = () => {
 
             // Recargar datos
             await loadProducts();
-            await loadLogs();
             setShowAddStockModal(false);
             setSelectedProductForStock(null);
         } catch (err) {
@@ -309,7 +297,7 @@ const InventoryPage = () => {
                                         </th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
+                                {/*<tbody className="bg-white divide-y divide-gray-200">
                                     {logs.map((log) => (
                                         <tr key={log.id}>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -348,7 +336,7 @@ const InventoryPage = () => {
                                             </td>
                                         </tr>
                                     ))}
-                                </tbody>
+                                </tbody>*/}
                             </table>
                         </div>
                     </TabPanel>

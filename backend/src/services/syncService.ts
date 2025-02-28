@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { SyncOperation, SyncRequest, SyncResponse } from '../types/sync';
 import { DriveService } from './driveService';
 
@@ -179,11 +179,6 @@ class SyncService {
                         // No lanzamos el error para que la sincronización continue
                     }
                 }
-                break;
-
-            case 'inventoryLog':
-                // Aquí no necesitamos hacer nada especial, solo registrar que se procesó
-                console.log('Processed inventoryLog operation');
                 break;
         }
     }

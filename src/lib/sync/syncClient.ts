@@ -245,27 +245,6 @@ class SyncClient extends EventEmitter {
                             console.error('Error processing cash register:', error);
                         }
                         break;
-
-                    case 'inventoryLog':
-                        try {
-                            const inventoryLog = JSON.parse(operation.data);
-                            const db = await initDatabase();
-
-                            // Verificar si ya existe usando el ID como clave única
-                            const existingLog = await db.get('inventoryLogs', inventoryLog.id);
-                            if (!existingLog) {
-                                console.log(`Adding remote inventory log: ${inventoryLog.id}`);
-                                await db.add('inventoryLogs', {
-                                    ...inventoryLog,
-                                    synced: true
-                                });
-                            } else {
-                                console.log(`Inventory log ${inventoryLog.id} already exists, skipping`);
-                            }
-                        } catch (error) {
-                            console.error('Error processing inventory log:', error);
-                        }
-                        break;
                 }
 
                 // Marcar la operación como completada después de procesarla

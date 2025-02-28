@@ -75,13 +75,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Iniciar sincronización después del login exitoso
             syncClient.start();
 
-            // Sincronizar los logs de inventario
-            try {
-                const { inventoryLogOperations } = await import('../lib/database');
-                await inventoryLogOperations.syncWithServer();
-            } catch (error) {
-                console.error('Error syncing inventory logs after login:', error);
-            }
         } catch (error) {
             throw new Error('Login failed');
         }

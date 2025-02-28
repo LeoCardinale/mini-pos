@@ -1,6 +1,6 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { config } from '../../config';
-import { Product, Transaction, AccountTransaction, CashRegister, Currency, Wallet, Account, AccountTransactionItem, PrepaidProduct, InventoryLog, SyncEntityType } from '../../types';
+import { Product, Transaction, AccountTransaction, CashRegister, Currency, Wallet, Account, AccountTransactionItem, PrepaidProduct, SyncEntityType } from '../../types';
 import { SyncOperation } from '../../types/sync';
 
 type CreateProductData = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
@@ -11,7 +11,7 @@ interface SyncQueueItem {
     id: string;
     timestamp: number;
     type: 'create' | 'update' | 'delete';
-    entity: 'product' | 'transaction' | 'cashRegister' | 'inventoryLog';
+    entity: 'product' | 'transaction' | 'cashRegister';
     data: string;
     deviceId: string;
     status: 'pending' | 'completed' | 'failed';
@@ -44,11 +44,6 @@ interface DBSchema {
     accounts: {
         key: number;
         value: Account;
-    };
-    inventoryLogs: {
-        key: string;
-        value: InventoryLog;
-        indexes: { 'by-timestamp': number };
     };
 }
 
@@ -109,11 +104,6 @@ export const initDatabase = async () => {
             if (!db.objectStoreNames.contains('accounts')) {
                 db.createObjectStore('accounts', { keyPath: 'id' });
             }
-
-            if (!db.objectStoreNames.contains('inventoryLogs')) {
-                const logsStore = db.createObjectStore('inventoryLogs', { keyPath: 'id' });
-                logsStore.createIndex('by-timestamp', 'timestamp');
-            }
         },
     });
 
@@ -153,22 +143,6 @@ export const productOperations = {
 
             // Guardamos primero localmente
             await db.add('products', productToStore);
-
-            // Crear log de la operación
-            await inventoryLogOperations.create({
-                userName,
-                action: 'CREATED',
-                productId: productToStore.id,
-                description: {
-                    product: productToStore.name,
-                    changes: Object.entries(productToStore)
-                        .filter(([key]) => !['id', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'imageUrl'].includes(key))
-                        .map(([field, value]) => ({
-                            field,
-                            newValue: value
-                        }))
-                }
-            });
 
             // Crear entrada en la cola de sincronización
             await syncQueueOperations.addOperation({
@@ -246,19 +220,6 @@ export const productOperations = {
             };
 
             await db.put('products', updatedProduct);
-
-            // Crear log si hay cambios
-            if (changes.length > 0) {
-                await inventoryLogOperations.create({
-                    userName,
-                    action: 'EDITED',
-                    productId: id,
-                    description: {
-                        product: existingProduct.name,
-                        changes
-                    }
-                });
-            }
 
             // Crear entrada en la cola de sincronización
             await syncQueueOperations.addOperation({
@@ -758,132 +719,6 @@ export const salesOperations = {
             ...saleData,
             createdAt: new Date(saleData.createdAt)
         });
-    }
-};
-
-export const inventoryLogOperations = {
-    async create(log: Omit<InventoryLog, 'id' | 'timestamp'>) {
-        const db = await initDatabase();
-        const id = crypto.randomUUID();
-        const timestamp = Date.now();
-
-        // Guardar localmente primero
-        const newLog = {
-            ...log,
-            id,
-            timestamp
-        };
-
-        await db.add('inventoryLogs', newLog);
-
-        // Encolar para sincronización
-        await syncQueueOperations.addOperation({
-            type: 'create',
-            entity: 'inventoryLog',
-            data: JSON.stringify(newLog),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
-            status: 'pending'
-        });
-
-        // No sincronizamos inmediatamente para evitar duplicados
-        // El proceso de sincronización normal se encargará de esto
-
-        return id;
-    },
-
-    async getAll() {
-        const db = await initDatabase();
-        return db.getAll('inventoryLogs');
-    },
-
-    async syncWithServer() {
-        // Si estamos offline, no intentamos sincronizar
-        if (!navigator.onLine) return;
-
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-
-            // Obtener logs locales para enviar al servidor
-            const localLogs = await this.getAll();
-            const pendingLogs = localLogs.filter(log => !log.synced);
-
-            // Si hay logs pendientes, los enviamos al servidor
-            if (pendingLogs.length > 0) {
-                for (const log of pendingLogs) {
-                    // Convertir al formato que espera el servidor
-                    const serverLog = {
-                        id: log.id,
-                        action: log.action,
-                        productId: log.productId,
-                        description: log.description
-                    };
-
-                    // Enviar al servidor
-                    const response = await fetch(`${config.apiUrl}/inventory/logs`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify(serverLog)
-                    });
-
-                    if (response.ok) {
-                        const responseData = await response.json();
-
-                        // Marcar como sincronizado y guardar el ID del servidor
-                        const db = await initDatabase();
-                        await db.put('inventoryLogs', {
-                            ...log,
-                            synced: true,
-                            serverId: responseData.id // Guarda el ID del servidor
-                        });
-                    }
-                }
-            }
-
-            // Obtener logs del servidor
-            const response = await fetch(`${config.apiUrl}/inventory/logs`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (response.ok) {
-                const serverLogs = await response.json();
-                const db = await initDatabase();
-
-                // Actualizar IndexedDB con los logs del servidor
-                const tx = db.transaction('inventoryLogs', 'readwrite');
-
-                for (const serverLog of serverLogs) {
-                    // Convertir del formato del servidor al formato local
-                    const localLog = {
-                        id: serverLog.id,
-                        timestamp: new Date(serverLog.createdAt).getTime(),
-                        userId: serverLog.userId,
-                        userName: serverLog.user?.name || 'Unknown',
-                        action: serverLog.action.toUpperCase(),
-                        productId: serverLog.productId || 0,
-                        description: typeof serverLog.changes === 'string'
-                            ? JSON.parse(serverLog.changes)
-                            : serverLog.changes,
-                        synced: true
-                    };
-
-                    // Solo agregar si no existe localmente
-                    const existingLog = await tx.store.get(localLog.id);
-                    if (!existingLog) {
-                        await tx.store.add(localLog);
-                    }
-                }
-
-                await tx.done;
-            }
-        } catch (error) {
-            console.error('Error synchronizing inventory logs:', error);
-        }
     }
 };
 

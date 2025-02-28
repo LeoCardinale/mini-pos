@@ -39,7 +39,7 @@ model Product {
     updatedBy       String    
     creator         User      @relation("ProductCreator", fields: [createdBy], references: [id])
     updater         User      @relation("ProductUpdater", fields: [updatedBy], references: [id])
-    auditLogs       AuditLog[] 
+    
     isActive        Boolean   @default(true)
     // Relaciones
     transactionItems TransactionItem[]
@@ -112,7 +112,6 @@ model User {
   cashRegisters     CashRegister[]
   productsCreated   Product[]      @relation("ProductCreator")
   productsUpdated   Product[]      @relation("ProductUpdater")
-  auditLogs         AuditLog[]
 
   accountsCreated   Account[]  @relation("AccountCreator")
   accountsClosed    Account[]  @relation("AccountCloser")
@@ -127,19 +126,6 @@ model Role {
   users       User[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-}
-
-model AuditLog {
-    id        String   @id @default(uuid())
-    action    String   // 'create' | 'update' | 'delete'
-    entity    String   // Nombre de la entidad afectada
-    entityId  String   // ID de la entidad afectada
-    changes   String   // JSON con los cambios realizados
-    userId    String
-    user      User     @relation(fields: [userId], references: [id])
-    productId Int?     // Opcional: referencia específica a producto si aplica
-    product   Product? @relation(fields: [productId], references: [id])
-    createdAt DateTime @default(now())
 }
 
 model Supplier {

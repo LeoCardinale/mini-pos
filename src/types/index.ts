@@ -58,12 +58,11 @@ export interface CashRegister {
     userId: string;
 }
 // Tipos para sincronización
-export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord' | 'report' | 'inventoryLog';
+export type SyncEntityType = 'product' | 'transaction' | 'cashRegister' | 'accountTransaction' | 'salesRecord' | 'report';
 export type SyncOperationType = 'create' | 'update' | 'delete';
 export type SyncStatus = 'pending' | 'completed' | 'failed';
 export type Currency = "USD" | "BS";
 export type Wallet = "CASH_USD" | "CASH_BS" | "TRANSFER_USD" | "CUENTA_BS";
-export type InventoryLogAction = 'CREATED' | 'EDITED' | 'DELETED' | 'STOCK_ADDED';
 
 export enum AccountType {
     PREPAID = 'PREPAID',
@@ -122,26 +121,4 @@ export interface WalletAmounts {
     cashBs: number;
     transferUSD: number;
     cuentaBs: number;
-}
-
-export interface InventoryLogChange {
-    field: string;
-    oldValue?: any;
-    newValue: any;
-}
-
-export interface InventoryLogDescription {
-    product: string;
-    changes?: InventoryLogChange[];
-    notes?: string;
-}
-
-export interface InventoryLog {
-    id: string;
-    timestamp: number;
-    userName: string;
-    action: InventoryLogAction;
-    productId: number;
-    description: InventoryLogDescription;
-    synced?: boolean;
 }
