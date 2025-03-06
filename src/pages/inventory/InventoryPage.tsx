@@ -32,7 +32,14 @@ const InventoryPage = () => {
 
     const refreshData = async () => {
         await loadProducts();
-        await loadLogs(1, true);
+
+        // No esperar por los logs, cargarlos en paralelo
+        loadLogs(1, true).catch(e => console.log('Non-critical error loading logs:', e));
+
+        // Limpieza de logs en segundo plano, sin bloquear ni notificar errores
+        setTimeout(() => {
+            inventoryLogOperations.cleanupOldLogs().catch(() => { });
+        }, 2000);
     };
 
     useEffect(() => {
@@ -131,10 +138,6 @@ const InventoryPage = () => {
     const cleanupLogs = async () => {
         await inventoryLogOperations.cleanupOldLogs();
     };
-
-    useEffect(() => {
-        cleanupLogs();
-    }, []);
 
     // Función para cargar más logs
     const handleLoadMoreLogs = () => {

@@ -16,10 +16,8 @@ export const getInventoryLogs = async (req: Request, res: Response) => {
             include: {
                 user: {
                     select: { name: true }
-                },
-                product: {
-                    select: { name: true }
                 }
+                // Ya no hay relación con 'product'
             },
             orderBy: { timestamp: 'desc' },
             take: Number(limit),
@@ -31,9 +29,9 @@ export const getInventoryLogs = async (req: Request, res: Response) => {
             id: log.id,
             timestamp: log.timestamp,
             productId: log.productId,
+            productName: log.productName, // Usar el campo directo, no la relación
             userId: log.userId,
-            userName: log.user.name,
-            productName: log.product.name,
+            userName: log.user?.name || 'Usuario', // User sigue siendo una relación
             action: log.action,
             description: log.description
         }));

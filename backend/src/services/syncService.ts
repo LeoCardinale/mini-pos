@@ -182,29 +182,23 @@ class SyncService {
                 break;
             case 'inventoryLog':
                 if (operation.type === 'create') {
-                    // Verificar si ya existe el log para evitar duplicados
-                    const existingLog = await prisma.inventoryLog.findFirst({
-                        where: {
-                            userId: data.userId,
-                            productId: data.productId,
-                            action: data.action,
-                            timestamp: {
-                                gte: new Date(data.timestamp - 5000), // 5 segundos de margen
-                                lte: new Date(data.timestamp + 5000)
-                            }
-                        }
-                    });
+                    try {
+                        const parsedData = JSON.parse(operation.data);
 
-                    if (!existingLog) {
+                        // Ya no conectamos con el producto, usamos solo el nombre
                         await prisma.inventoryLog.create({
                             data: {
-                                timestamp: new Date(data.timestamp),
-                                product: { connect: { id: data.productId } },
-                                user: { connect: { id: data.userId } },
-                                action: data.action,
-                                description: data.description
+                                productId: null, // No usamos el ID de producto
+                                productName: parsedData.productName || parsedData.description.product || "Producto desconocido",
+                                userId: parsedData.userId,
+                                action: parsedData.action,
+                                description: parsedData.description,
+                                timestamp: new Date(parsedData.timestamp || Date.now())
                             }
                         });
+
+                    } catch (error) {
+                        console.log("Error processing inventory log, but continuing:", error);
                     }
                 }
                 break;

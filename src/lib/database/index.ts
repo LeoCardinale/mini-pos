@@ -65,7 +65,7 @@ let db: IDBPDatabase<DBSchema>;
 export const initDatabase = async () => {
     if (db) return db;
 
-    db = await openDB<DBSchema>('pos-db', 3, {
+    db = await openDB<DBSchema>('pos-db', 4, {
         upgrade(db, oldVersion, newVersion) {
             // Stores existentes
             if (!db.objectStoreNames.contains('products')) {
@@ -111,6 +111,7 @@ export const initDatabase = async () => {
             }
 
             if (!db.objectStoreNames.contains('inventoryLogs')) {
+                console.log('Creating inventoryLogs store');
                 const logsStore = db.createObjectStore('inventoryLogs', { keyPath: 'id' });
                 logsStore.createIndex('by-timestamp', 'timestamp');
             }
@@ -145,7 +146,7 @@ export const productOperations = {
 
             const productToStore = {
                 ...product,
-                id: Date.now(),
+                id: Math.floor(Math.random() * 1000000) + 1,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 createdBy: userId,
@@ -198,6 +199,7 @@ export const productOperations = {
             // Crear log
             await inventoryLogOperations.create({
                 productId: productToStore.id,
+                productName: productToStore.name,
                 userId,
                 userName,
                 action: 'create',
@@ -429,7 +431,6 @@ export const productOperations = {
     async addStock(id: number, quantity: number, cost?: number, price?: number, notes?: string) {
         try {
             const existingProduct = await this.getById(id);
-
             if (!existingProduct) {
                 throw new Error('Product not found');
             }
@@ -447,18 +448,36 @@ export const productOperations = {
                 updateData.price = price;
             }
 
-            // Usar el método update existente
-            const updatedProduct = await this.update(id, updateData);
+            // MODIFICACIÓN: No usar this.update, para evitar log redundante
+            // En lugar de awaitar productOperations.update, hacemos la actualización directamente:
 
-            // Obtener info del usuario
+            const db = await initDatabase();
+            const updatedProduct = {
+                ...existingProduct,
+                ...updateData,
+                updatedAt: new Date()
+            };
+
+            await db.put('products', updatedProduct);
+
+            // Encolar sincronización manualmente
+            await syncQueueOperations.addOperation({
+                type: 'update',
+                entity: 'product',
+                data: JSON.stringify(updatedProduct),
+                deviceId: localStorage.getItem('deviceId') || 'unknown',
+                status: 'pending'
+            });
+
+            // Crear log específico para addStock
             const token = localStorage.getItem('token');
             const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
             const userId = tokenData?.userId || 'unknown';
             const userName = tokenData?.name || 'Unknown User';
 
-            // Crear log
             await inventoryLogOperations.create({
                 productId: id,
+                productName: existingProduct.name,
                 userId,
                 userName,
                 action: 'addStock',
@@ -921,106 +940,103 @@ export const salesOperations = {
 };
 
 export const inventoryLogOperations = {
-    async create(logData: Partial<InventoryLog>) {
-        const db = await initDatabase();
-        const id = crypto.randomUUID();
-        const fullLog = {
-            ...logData,
-            id,
-            timestamp: new Date()
-        };
+    async create(logData: any) {
+        try {
+            const db = await initDatabase();
 
-        await db.add('inventoryLogs', fullLog);
+            if (!db.objectStoreNames.contains('inventoryLogs')) {
+                return '';
+            }
 
-        // Encolar para sincronización usando aserción de tipo
-        await syncQueueOperations.addOperation({
-            type: 'create',
-            entity: 'inventoryLog' as SyncEntityType,
-            data: JSON.stringify(fullLog),
-            deviceId: localStorage.getItem('deviceId') || 'unknown',
-            status: 'pending'
-        });
+            // Asegurar que siempre se incluye el nombre del producto
+            const log = {
+                id: crypto.randomUUID(),
+                timestamp: new Date(),
+                productName: logData.description?.product || "Producto desconocido",
+                ...logData
+            };
 
-        return id;
+            // Guardar localmente
+            await db.add('inventoryLogs', log);
+
+            // Intentar sincronizar solo cuando estamos online
+            if (navigator.onLine) {
+                try {
+                    await syncQueueOperations.addOperation({
+                        type: 'create',
+                        entity: 'inventoryLog' as SyncEntityType,
+                        data: JSON.stringify(log),
+                        deviceId: localStorage.getItem('deviceId') || 'unknown',
+                        status: 'pending'
+                    });
+                } catch (e) {
+                    console.log('Error queuing log for sync, but continuing locally');
+                }
+            }
+
+            return log.id;
+        } catch (e) {
+            console.log('Error creating log, but continuing:', e);
+            return '';
+        }
     },
 
-    async getAll(limit = 100) {
-        const db = await initDatabase();
-        let logs = await db.getAll('inventoryLogs');
-        logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-        return logs.slice(0, limit); // Limitar a los últimos 'limit' logs
+    async getAll() {
+        try {
+            const db = await initDatabase();
+            if (!db.objectStoreNames.contains('inventoryLogs')) {
+                return [];
+            }
+
+            let logs = await db.getAll('inventoryLogs');
+            logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+            return logs;
+        } catch (e) {
+            console.log('Error fetching logs, but continuing:', e);
+            return [];
+        }
     },
 
     async getPaginated(page = 1, pageSize = 20) {
         try {
-            if (navigator.onLine) {
-                const offset = (page - 1) * pageSize;
-                const response = await fetch(`${config.apiUrl}/inventory-logs?limit=${pageSize}&offset=${offset}`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
-                });
+            const allLogs = await this.getAll();
+            const offset = (page - 1) * pageSize;
+            const paginatedLogs = allLogs.slice(offset, offset + pageSize);
 
-                if (!response.ok) {
-                    throw new Error('Error fetching inventory logs');
-                }
-
-                const result = await response.json();
-
-                // Actualizar IndexedDB con los nuevos logs
-                const db = await initDatabase();
-                await Promise.all(result.logs.map(async (log: any) => {
-                    await db.put('inventoryLogs', {
-                        ...log,
-                        timestamp: new Date(log.timestamp)
-                    });
-                }));
-
-                return result;
-            }
-        } catch (error) {
-            console.error('Error fetching logs from server:', error);
+            return {
+                logs: paginatedLogs,
+                totalCount: allLogs.length,
+                hasMore: allLogs.length > offset + pageSize
+            };
+        } catch (e) {
+            console.log('Error paginating logs, but continuing:', e);
+            return { logs: [], totalCount: 0, hasMore: false };
         }
-
-        // Fallback a datos locales si estamos offline o hay un error
-        const db = await initDatabase();
-        let logs = await db.getAll('inventoryLogs');
-        logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
-        const offset = (page - 1) * pageSize;
-        const paginatedLogs = logs.slice(offset, offset + pageSize);
-
-        return {
-            logs: paginatedLogs,
-            totalCount: logs.length,
-            hasMore: logs.length > offset + pageSize
-        };
     },
 
     // Limpiar logs antiguos para mantener solo los últimos 100
     async cleanupOldLogs() {
         try {
             const db = await initDatabase();
-            let logs = await db.getAll('inventoryLogs');
-
-            if (logs.length <= 100) return; // No hay necesidad de limpiar
-
-            // Ordenar por fecha descendente
-            logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
-            // Obtener IDs de logs a eliminar (más allá de 100)
-            const logsToDelete = logs.slice(100);
-
-            // Eliminar logs antiguos
-            const tx = db.transaction('inventoryLogs', 'readwrite');
-            for (const log of logsToDelete) {
-                await tx.store.delete(log.id);
+            if (!db.objectStoreNames.contains('inventoryLogs')) {
+                return;
             }
-            await tx.done;
 
-            console.log(`Cleaned up ${logsToDelete.length} old inventory logs`);
-        } catch (error) {
-            console.error('Error cleaning up old logs:', error);
+            const logs = await db.getAll('inventoryLogs');
+
+            // Si hay demasiados logs, eliminar los más antiguos
+            if (logs.length > 100) {
+                logs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                const logsToDelete = logs.slice(0, logs.length - 100);
+
+                const tx = db.transaction('inventoryLogs', 'readwrite');
+                for (const log of logsToDelete) {
+                    await tx.store.delete(log.id);
+                }
+                await tx.done;
+            }
+        } catch (e) {
+            console.log('Error cleaning logs, but continuing:', e);
         }
     }
 };
