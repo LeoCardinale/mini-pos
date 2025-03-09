@@ -161,7 +161,7 @@ const POSPage = () => {
             for (const item of cartItems) {
                 await productOperations.update(item.product.id, {
                     stock: item.product.stock - item.quantity
-                });
+                }, true); // enviamos 'true' para que no se cree un log de stock
             }
 
             for (const item of cartItems) {

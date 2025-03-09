@@ -222,7 +222,7 @@ export const productOperations = {
         }
     },
 
-    async update(id: number, productData: UpdateProductData) {
+    async update(id: number, productData: UpdateProductData, skipLog: boolean = false) {
         try {
             const db = await initDatabase();
             const existingProduct = await db.get('products', id);
@@ -276,46 +276,49 @@ export const productOperations = {
                 }
             }
 
-            // Obtener info del usuario
-            const token = localStorage.getItem('token');
-            const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
-            const userId = tokenData?.userId || 'unknown';
-            const userName = tokenData?.name || 'Unknown User';
+            // Crear log solo si no se debe omitir
+            if (!skipLog) {
+                // Obtener info del usuario
+                const token = localStorage.getItem('token');
+                const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
+                const userId = tokenData?.userId || 'unknown';
+                const userName = tokenData?.name || 'Unknown User';
 
-            // Crear log solo si hay cambios
-            const changes = [];
-            for (const key in productData) {
-                if (Object.prototype.hasOwnProperty.call(productData, key) &&
-                    key !== 'updatedAt' &&
-                    productData[key as keyof typeof productData] !== existingProduct[key as keyof typeof existingProduct]) {
-                    // Caso especial para el campo imageUrl
-                    if (key === 'imageUrl') {
-                        changes.push({
-                            field: key,
-                            oldValue: existingProduct[key as keyof typeof existingProduct] ? 'Imagen anterior' : 'Sin imagen',
-                            newValue: productData[key as keyof typeof productData] ? 'Nueva imagen' : 'Sin imagen'
-                        });
-                    } else {
-                        changes.push({
-                            field: key,
-                            oldValue: existingProduct[key as keyof typeof existingProduct],
-                            newValue: productData[key as keyof typeof productData]
-                        });
+                // Crear log específico para addStock
+                const changes = [];
+                for (const key in productData) {
+                    if (Object.prototype.hasOwnProperty.call(productData, key) &&
+                        key !== 'updatedAt' &&
+                        productData[key as keyof typeof productData] !== existingProduct[key as keyof typeof existingProduct]) {
+                        // Caso especial para el campo imageUrl
+                        if (key === 'imageUrl') {
+                            changes.push({
+                                field: key,
+                                oldValue: existingProduct[key as keyof typeof existingProduct] ? 'Imagen anterior' : 'Sin imagen',
+                                newValue: productData[key as keyof typeof productData] ? 'Nueva imagen' : 'Sin imagen'
+                            });
+                        } else {
+                            changes.push({
+                                field: key,
+                                oldValue: existingProduct[key as keyof typeof existingProduct],
+                                newValue: productData[key as keyof typeof productData]
+                            });
+                        }
                     }
                 }
-            }
 
-            if (changes.length > 0) {
-                await inventoryLogOperations.create({
-                    productId: id,
-                    userId,
-                    userName,
-                    action: 'update',
-                    description: {
-                        product: existingProduct.name,
-                        changes
-                    }
-                });
+                if (changes.length > 0) {
+                    await inventoryLogOperations.create({
+                        productId: id,
+                        userId,
+                        userName,
+                        action: 'update',
+                        description: {
+                            product: existingProduct.name,
+                            changes
+                        }
+                    });
+                }
             }
 
             return updatedProduct;

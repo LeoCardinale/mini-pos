@@ -1,7 +1,7 @@
 // src/pages/register/RegisterControl.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Transaction, CashRegister, PaymentMethod } from '../../types';
-import { cashRegisterOperations, transactionOperations, syncQueueOperations } from '../../lib/database';
+import { Transaction, CashRegister, PaymentMethod, Product } from '../../types';
+import { cashRegisterOperations, transactionOperations, syncQueueOperations, productOperations, initDatabase } from '../../lib/database';
 import SalesSummary from '../../components/register/SalesSummary';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
@@ -33,6 +33,8 @@ const RegisterControl = () => {
         dollarRate: 0
     });
     const initRef = useRef(false);
+    const [products, setProducts] = useState<Record<number, Product>>({});
+
 
     const checkRegisterStatus = async () => {
         try {
@@ -64,13 +66,40 @@ const RegisterControl = () => {
         if (initRef.current) return;
         initRef.current = true;
 
-        checkRegisterStatus();
+        const initialize = async () => {
+            await checkRegisterStatus();
+
+            try {
+                // Cargar productos y convertirlos en un mapa para acceso rápido por ID
+                const allProducts = await productOperations.getAll();
+                const productsMap = allProducts.reduce((map: Record<number, Product>, product: Product) => {
+                    map[product.id] = product;
+                    return map;
+                }, {} as Record<number, Product>);
+
+                setProducts(productsMap);
+            } catch (err) {
+                console.error('Error loading products:', err);
+            }
+        };
+
+        initialize();
 
         // Cleanup function
         return () => {
             initRef.current = false;
         };
-    }, [user?.id]); // Dependencia específica en lugar de user completo
+    }, [user?.id]);
+
+    const getTransactionWithItems = async (transactionId: number) => {
+        try {
+            const transaction = await transactionOperations.getById(transactionId);
+            return transaction;
+        } catch (error) {
+            console.error(`Error getting items for transaction ${transactionId}:`, error);
+            return null;
+        }
+    };
 
     const handleOpenRegister = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -129,7 +158,7 @@ const RegisterControl = () => {
 
             // Generar el contenido del reporte
             console.log('Caja cerrada, generando reporte...');
-            const csvContent = generateReportContent();
+            const csvContent = await generateReportContent(); // Ahora es asíncrono
 
             // Encolar el reporte para sincronización
             await syncQueueOperations.addOperation({
@@ -170,10 +199,39 @@ const RegisterControl = () => {
         }
     };
 
-    const generateReportContent = () => {
+    const generateReportContent = async () => {
         if (!currentRegister || !user) return '';
 
         const activeTransactions = transactions.filter(t => t.status === 'active');
+
+        // Cargar los items para todas las transacciones activas
+        const transactionsWithItems = await Promise.all(
+            activeTransactions.map(async (tx) => {
+                // Si ya tiene items, lo usamos directamente
+                if (tx.items && tx.items.length > 0) {
+                    return tx;
+                }
+                // Si no tiene items, los cargamos
+                const fullTx = await getTransactionWithItems(tx.id);
+                return fullTx || tx;
+            })
+        );
+
+        const db = await initDatabase();
+        const accountTxStore = db.transaction('accountTransactions', 'readonly').objectStore('accountTransactions');
+        let accumulatedTransactions = await accountTxStore.getAll();
+
+        // Filtrar por período de la caja, usuario, tipo y estado
+        accumulatedTransactions = accumulatedTransactions.filter(tx =>
+            tx.userId === user.id &&
+            tx.createdAt >= currentRegister.openedAt &&
+            (!currentRegister.closedAt || tx.createdAt <= currentRegister.closedAt) &&
+            tx.type === 'debit' &&  // Consumos (no pagos)
+            tx.accountType === 'ACCUMULATED' &&
+            (!tx.status || tx.status === 'active')  // No canceladas
+        );
+
+        console.log(`Encontradas ${accumulatedTransactions.length} transacciones de cuentas Accumulated`);
 
         // Calcular totales por wallet
         const totalsByWallet = activeTransactions.reduce((acc, t) => ({
@@ -209,35 +267,34 @@ const RegisterControl = () => {
         const rows = [
             ['Reporte de Caja'],
             ['Usuario', user.name],
-            ['Fecha', new Date().toLocaleDateString()],
             ['Hora Apertura', currentRegister.openedAt.toLocaleString()],
-            ['Hora Cierre', currentRegister.closedAt?.toLocaleString() || '-'],
+            ['Hora Cierre', new Date().toLocaleString()],
             ['Tasa Dólar', currentRegister.dollarRate.toString()],
             [''],
             ['Montos Iniciales'],
             ['Efectivo USD', `$${currentRegister.initialCashUSD.toFixed(2)}`],
-            ['Efectivo Bs', `Bs.${currentRegister.initialCashBs.toFixed(2)}`],
+            ['Efectivo Bs', `${currentRegister.initialCashBs.toFixed(2)}`],
             ['Transferencia USD', `$${currentRegister.initialTransferUSD.toFixed(2)}`],
-            ['Cuenta Bs', `Bs.${currentRegister.initialCuentaBs.toFixed(2)}`],
+            ['Cuenta Bs', `${currentRegister.initialCuentaBs.toFixed(2)}`],
             [''],
             ['Montos Finales'],
             ['Efectivo USD', `$${finalAmounts.cashUSD.toFixed(2)}`],
-            ['Efectivo Bs', `Bs.${finalAmounts.cashBs.toFixed(2)}`],
+            ['Efectivo Bs', `${finalAmounts.cashBs.toFixed(2)}`],
             ['Transferencia USD', `$${finalAmounts.transferUSD.toFixed(2)}`],
-            ['Cuenta Bs', `Bs.${finalAmounts.cuentaBs.toFixed(2)}`],
+            ['Cuenta Bs', `${finalAmounts.cuentaBs.toFixed(2)}`],
             [''],
             ['Ventas por Método de Pago'],
             ['Efectivo USD', `$${totalsByWallet.cashUSD.toFixed(2)}`],
-            ['Efectivo Bs', `Bs.${totalsByWallet.cashBs.toFixed(2)}`],
+            ['Efectivo Bs', `${totalsByWallet.cashBs.toFixed(2)}`],
             ['Transferencia USD', `$${totalsByWallet.transferUSD.toFixed(2)}`],
-            ['Cuenta Bs', `Bs.${totalsByWallet.cuentaBs.toFixed(2)}`],
+            ['Cuenta Bs', `${totalsByWallet.cuentaBs.toFixed(2)}`],
             ['Total Descuentos', `$${totalDiscounts.toFixed(2)}`],
             [''],
             ['Diferencias en Cuentas'],
             ['Efectivo USD', `$${differences.cashUSD.toFixed(2)}`],
-            ['Efectivo Bs', `Bs.${differences.cashBs.toFixed(2)}`],
+            ['Efectivo Bs', `${differences.cashBs.toFixed(2)}`],
             ['Transferencia USD', `$${differences.transferUSD.toFixed(2)}`],
-            ['Cuenta Bs', `Bs.${differences.cuentaBs.toFixed(2)}`],
+            ['Cuenta Bs', `${differences.cuentaBs.toFixed(2)}`],
             [''],
             ['Detalle de Transacciones'],
             ['Hora', 'Monto', 'Moneda', 'Método de Pago', 'Descuento', 'Cliente', 'Estado']
@@ -256,6 +313,125 @@ const RegisterControl = () => {
             ]);
         });
 
+        // NUEVA SECCIÓN: Productos Vendidos
+        rows.push(['']);
+        rows.push(['Detalle de Productos Vendidos']);
+        rows.push([
+            'Descripción',
+            'Costo Unitario',
+            'PVP Unitario',
+            'Ganancia Unitaria',
+            'Cantidad',
+            'Costo Total',
+            'PVP Total',
+            'Ganancia Total'
+        ]);
+
+        // Agrupar los productos vendidos de todas las transacciones activas
+        const productSales: Record<number, {
+            name: string;
+            cost: number;
+            price: number;
+            quantity: number;
+        }> = {};
+
+        // 1. Procesar transacciones POS
+        for (const transaction of transactionsWithItems) {
+            // Verificamos que la transacción tenga items
+            if (transaction.items && transaction.items.length > 0) {
+                for (const item of transaction.items) {
+                    const productId = item.productId;
+                    // Obtenemos el producto desde nuestro mapa
+                    const product = products[productId];
+
+                    if (product) {
+                        if (!productSales[productId]) {
+                            productSales[productId] = {
+                                name: product.name,
+                                cost: product.cost || 0, // Usar valor predeterminado si no hay costo
+                                price: item.price, // Usamos el precio en la transacción
+                                quantity: item.quantity
+                            };
+                        } else {
+                            // Sumamos la cantidad al producto existente
+                            productSales[productId].quantity += item.quantity;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. NUEVO: Procesar transacciones de cuentas Accumulated
+        for (const transaction of accumulatedTransactions) {
+            // Verificamos que la transacción tenga items
+            if (transaction.items && transaction.items.length > 0) {
+                for (const item of transaction.items) {
+                    const productId = item.productId;
+                    // Obtenemos el producto desde nuestro mapa
+                    const product = products[productId];
+
+                    if (product) {
+                        if (!productSales[productId]) {
+                            productSales[productId] = {
+                                name: product.name,
+                                cost: product.cost || 0,
+                                price: item.price,
+                                quantity: item.quantity
+                            };
+                        } else {
+                            // Sumamos la cantidad al producto existente
+                            productSales[productId].quantity += item.quantity;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Si no hay productos en el reporte, agregamos una fila indicándolo
+        if (Object.keys(productSales).length === 0) {
+            rows.push(['No hay productos vendidos en este periodo', '', '', '', '', '', '', '']);
+        } else {
+            // Añadir cada producto vendido al reporte
+            Object.values(productSales).forEach(product => {
+                const costoUnitario = product.cost;
+                const pvpUnitario = product.price;
+                const gananciaUnitaria = pvpUnitario - costoUnitario;
+                const cantidad = product.quantity;
+                const costoTotal = costoUnitario * cantidad;
+                const pvpTotal = pvpUnitario * cantidad;
+                const gananciaTotal = pvpTotal - costoTotal;
+
+                rows.push([
+                    product.name,
+                    `$${costoUnitario.toFixed(2)}`,
+                    `$${pvpUnitario.toFixed(2)}`,
+                    `$${gananciaUnitaria.toFixed(2)}`,
+                    cantidad.toString(),
+                    `$${costoTotal.toFixed(2)}`,
+                    `$${pvpTotal.toFixed(2)}`,
+                    `$${gananciaTotal.toFixed(2)}`
+                ]);
+            });
+
+            // Añadir el resumen final de ganancias
+            const totalCosto = Object.values(productSales).reduce((sum, product) =>
+                sum + (product.cost * product.quantity), 0);
+            const totalVenta = Object.values(productSales).reduce((sum, product) =>
+                sum + (product.price * product.quantity), 0);
+            const totalGanancia = totalVenta - totalCosto;
+
+            rows.push(['']);
+            rows.push(['Resumen de Ganancias']);
+            rows.push(['Total Costo', `$${totalCosto.toFixed(2)}`]);
+            rows.push(['Total Venta', `$${totalVenta.toFixed(2)}`]);
+            rows.push(['Total Ganancia', `$${totalGanancia.toFixed(2)}`]);
+            if (totalVenta > 0) {
+                rows.push(['Margen de Ganancia', `${((totalGanancia / totalVenta) * 100).toFixed(2)}%`]);
+            } else {
+                rows.push(['Margen de Ganancia', '0%']);
+            }
+        }
+
         const csvContent = rows
             .map(row => row.map(cell => `"${cell}"`).join(','))
             .join('\n');
@@ -266,82 +442,19 @@ const RegisterControl = () => {
 
         saveAs(blob, `register-report-${user.name}-${new Date().toISOString().split('T')[0]}.csv`);
 
-        return rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+        return csvContent
     };
 
     const generateReport = async () => {
         if (!currentRegister || !user) return;
 
-        const activeTransactions = transactions.filter(t => t.status === 'active');
-
-        // Calcular totales por wallet
-        const totalsByWallet = activeTransactions.reduce((acc, t) => ({
-            cashUSD: acc.cashUSD + (t.wallet === 'CASH_USD' ? t.amount : 0),
-            cashBs: acc.cashBs + (t.wallet === 'CASH_BS' ? t.amount : 0),
-            transferUSD: acc.transferUSD + (t.wallet === 'TRANSFER_USD' ? t.amount : 0),
-            cuentaBs: acc.cuentaBs + (t.wallet === 'CUENTA_BS' ? t.amount : 0)
-        }), {
-            cashUSD: 0,
-            cashBs: 0,
-            transferUSD: 0,
-            cuentaBs: 0
-        });
-
-        const totalDiscounts = activeTransactions.reduce((sum, t) => sum + t.discount, 0);
-
-        const rows = [
-            ['Reporte de Caja'],
-            ['Usuario', user.name],
-            ['Fecha', new Date().toLocaleDateString()],
-            ['Hora Apertura', currentRegister.openedAt.toLocaleString()],
-            ['Hora Cierre', currentRegister.closedAt?.toLocaleString() || '-'],
-            ['Tasa Dólar', currentRegister.dollarRate.toString()],
-            [''],
-            ['Montos Iniciales'],
-            ['Efectivo USD', `$${currentRegister.initialCashUSD.toFixed(2)}`],
-            ['Efectivo Bs', `Bs.${currentRegister.initialCashBs.toFixed(2)}`],
-            ['Transferencia USD', `$${currentRegister.initialTransferUSD.toFixed(2)}`],
-            ['Cuenta Bs', `Bs.${currentRegister.initialCuentaBs.toFixed(2)}`],
-            [''],
-            ['Montos Finales'],
-            ['Efectivo USD', `$${currentRegister.finalCashUSD?.toFixed(2) || '-'}`],
-            ['Efectivo Bs', `Bs.${currentRegister.finalCashBs?.toFixed(2) || '-'}`],
-            ['Transferencia USD', `$${currentRegister.finalTransferUSD?.toFixed(2) || '-'}`],
-            ['Cuenta Bs', `Bs.${currentRegister.finalCuentaBs?.toFixed(2) || '-'}`],
-            [''],
-            ['Ventas por Método de Pago'],
-            ['Efectivo USD', `$${totalsByWallet.cashUSD.toFixed(2)}`],
-            ['Efectivo Bs', `Bs.${totalsByWallet.cashBs.toFixed(2)}`],
-            ['Transferencia USD', `$${totalsByWallet.transferUSD.toFixed(2)}`],
-            ['Cuenta Bs', `Bs.${totalsByWallet.cuentaBs.toFixed(2)}`],
-            ['Total Descuentos', `$${totalDiscounts.toFixed(2)}`],
-            [''],
-            ['Detalle de Transacciones'],
-            ['Hora', 'Monto', 'Moneda', 'Método de Pago', 'Descuento', 'Cliente', 'Estado']
-        ];
-
-        // Agregar transacciones al reporte
-        transactions.forEach(t => {
-            rows.push([
-                t.createdAt.toLocaleString(),
-                t.amount.toFixed(2),
-                t.currency,
-                t.wallet,
-                t.discount.toFixed(2),
-                t.customerName || '-',
-                t.status
-            ]);
-        });
-
-        const csvContent = rows
-            .map(row => row.map(cell => `"${cell}"`).join(','))
-            .join('\n');
-
-        const blob = new Blob(['\ufeff' + csvContent], {
-            type: 'text/csv;charset=utf-8'
-        });
-
-        saveAs(blob, `reporte_caja_${new Date().toISOString().split('T')[0]}.csv`);
+        try {
+            // Usar la misma función asíncrona para generar el reporte
+            await generateReportContent();
+        } catch (error) {
+            console.error('Error generando reporte:', error);
+            setError('Error generando reporte');
+        }
     };
 
     const handleCancelTransaction = async (transactionId: number) => {
