@@ -10,16 +10,6 @@ import { useTranslation } from 'react-i18next';
 import CheckoutModal from '../pos/CheckoutModal';
 import { useNavigate } from 'react-router-dom';
 
-
-type PaymentMethod = 'cash' | 'card' | 'transfer';
-
-interface PaymentData {
-    amount: number;
-    method: PaymentMethod;
-    discount: number;
-    note?: string;
-}
-
 interface AccumulatedAccountDetailProps {
     account: Account;
     onUpdate: () => void;
@@ -173,14 +163,31 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
         customerName: string;
         discount: number;
         currency: Currency;
+        paymentAmount?: number;
+        paymentNote?: string;
     }) => {
         try {
             if (!user || !currentRegister) throw new Error('Invalid state');
 
-            // El balance siempre debe estar en USD
+            // Utilizamos el monto del pago (si se especificó en CheckoutModal), o el balance total
+            const paymentAmountUSD = data.paymentAmount !== undefined ? data.paymentAmount : balance;
+
+            // Validación adicional (el frontend ya debería haberlo validado, pero por seguridad)
+            if (paymentAmountUSD <= 0) {
+                throw new Error('El monto de pago debe ser mayor que cero');
+            }
+
+            if (paymentAmountUSD > balance) {
+                throw new Error('El monto de pago no puede superar el balance pendiente');
+            }
+
+            // El monto en la moneda seleccionada
             const transactionAmount = data.currency === 'BS'
-                ? balance * currentRegister.dollarRate
-                : balance;
+                ? paymentAmountUSD * currentRegister.dollarRate
+                : paymentAmountUSD;
+
+            // Formato para el nombre del cliente en la transacción POS
+            const posCustomerName = `Accumulated: ${account.customerName}`;
 
             // Crear transacción POS para la caja
             const transaction: Omit<Transaction, 'id'> = {
@@ -192,7 +199,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                 createdAt: new Date(),
                 userId: user.id,
                 deviceId: localStorage.getItem('deviceId') || 'unknown',
-                customerName: `Accumulated: ${account.customerName}`,
+                customerName: posCustomerName,
                 status: 'active',
                 items: [] // Pagos no tienen items
             };
@@ -200,6 +207,13 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
             // Crear transacción POS
             await transactionOperations.create(transaction);
 
+            // Si es pago parcial y no hay nota específica, indicamos que es un pago parcial
+            let paymentNote = data.paymentNote || '';
+            if (data.paymentAmount !== undefined && data.paymentAmount < balance && !paymentNote) {
+                paymentNote = t('accounts.partialPayment', 'Pago parcial');
+            }
+
+            // Crear transacción de cuenta
             await accountOperations.addItems(
                 account.id,
                 [],
@@ -211,7 +225,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                     method: data.paymentMethod,
                     discount: data.discount,
                     currency: data.currency,
-                    note: data.customerName
+                    note: paymentNote
                 }
             );
 
@@ -491,6 +505,7 @@ const AccumulatedAccountDetail: React.FC<AccumulatedAccountDetailProps> = ({ acc
                     onComplete={handlePaymentComplete}
                     onCancel={() => setShowCheckoutModal(false)}
                     context="account"
+                    allowPartialPayment={true} // Habilitamos el pago parcial
                 />
             )}
         </div>

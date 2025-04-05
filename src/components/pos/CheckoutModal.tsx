@@ -1,178 +1,243 @@
-import React, { useState } from 'react';
-import { PaymentMethod, Currency, Wallet } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { Currency, Wallet } from '../../types';
 import { useTranslation } from 'react-i18next';
 
 interface CheckoutModalProps {
     total: number;
-    discount: number;
+    discount?: number;
     dollarRate: number;
-    context?: 'pos' | 'account';
     onComplete: (data: {
         paymentMethod: Wallet;
         customerName: string;
         discount: number;
         currency: Currency;
-    }) => void;
+        paymentAmount?: number; // Monto opcional en caso de pagos parciales
+        paymentNote?: string;   // Nota de pago opcional
+    }) => Promise<void>;
     onCancel: () => void;
+    context?: 'pos' | 'account'; // Para saber si viene de POS o de cuentas
+    allowPartialPayment?: boolean; // Nuevo prop para permitir pagos parciales
 }
-
-const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
-
 const CheckoutModal: React.FC<CheckoutModalProps> = ({
     total,
-    discount,
+    discount = 0,
     dollarRate,
     onComplete,
     onCancel,
-    context = 'pos'
+    context = 'pos',
+    allowPartialPayment = false
 }) => {
-    const [currency, setCurrency] = useState<Currency>("USD");
-    const [wallet, setWallet] = useState<Wallet>("CASH_USD");
+    const [paymentMethod, setPaymentMethod] = useState<Wallet>('CASH_USD');
     const [customerName, setCustomerName] = useState('');
+    const [currency, setCurrency] = useState<Currency>('USD');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [paymentAmount, setPaymentAmount] = useState<number>(total);
     const { t } = useTranslation();
+    const [paymentNote, setPaymentNote] = useState('');
 
-    const totalInSelectedCurrency = currency === "USD" ? total : total * dollarRate;
-    const discountInSelectedCurrency = currency === "USD" ? discount : discount * dollarRate;
-    const [selectedOption, setSelectedOption] = useState<string>('CASH_USD');
+    // Actualizar el monto cuando cambia el total
+    useEffect(() => {
+        setPaymentAmount(total);
+    }, [total]);
 
-    const getAvailableWallets = (selectedCurrency: Currency) => {
-        const options = selectedCurrency === "USD"
-            ? [
-                { value: "CASH_USD", label: "Cash $" },
-                { value: "TRANSFER_USD", label: "Transfer $" }
-            ]
-            : [
-                { value: "CASH_BS", label: "Efectivo Bs." },
-                { value: "CUENTA_BS_CARD", label: "Tarjeta Bs." },
-                { value: "CUENTA_BS_TRANSFER", label: "Transferencia Bs." }
-            ];
-
-        return options;
+    // Función para obtener las billeteras disponibles según la moneda seleccionada
+    const getAvailableWallets = (): Wallet[] => {
+        if (currency === 'USD') {
+            return ['CASH_USD', 'TRANSFER_USD'];
+        } else {
+            return ['CASH_BS', 'CUENTA_BS'];
+        }
     };
+
+    // Cada vez que cambia la moneda, actualizar el método de pago
+    useEffect(() => {
+        const wallets = getAvailableWallets();
+        // Seleccionar la primera billetera disponible por defecto
+        setPaymentMethod(wallets[0]);
+    }, [currency]);
 
     const handleCurrencyChange = (newCurrency: Currency) => {
         setCurrency(newCurrency);
-        // Resetear a la primera opción disponible para la moneda
-        const firstOption = getAvailableWallets(newCurrency)[0].value;
-        setSelectedOption(firstOption);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const wallet: Wallet = selectedOption.includes('CUENTA_BS') ? 'CUENTA_BS' : selectedOption as Wallet;
-        onComplete({
-            paymentMethod: wallet,
-            customerName,
-            discount,
-            currency
-        });
+    const handleComplete = async () => {
+        try {
+            setError(null);
+            setIsProcessing(true);
+
+            // Validar que el monto sea válido (solo para pagos parciales)
+            if (allowPartialPayment) {
+                if (paymentAmount <= 0) {
+                    setError(t('accounts.amountMustBeGreaterThanZero', 'El monto debe ser mayor que cero'));
+                    setIsProcessing(false);
+                    return;
+                }
+
+                if (paymentAmount > total) {
+                    setError(t('accounts.amountCannotExceedBalance', 'El monto no puede ser mayor al balance pendiente'));
+                    setIsProcessing(false);
+                    return;
+                }
+            }
+
+            await onComplete({
+                paymentMethod,
+                customerName,
+                discount,
+                currency,
+                paymentAmount: allowPartialPayment ? paymentAmount : undefined,
+                paymentNote
+            });
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Error procesando el pago');
+        } finally {
+            setIsProcessing(false);
+        }
     };
+
+    // Calcular el monto a mostrar según la moneda
+    const displayTotal = currency === 'USD' ? paymentAmount : paymentAmount * dollarRate;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                <h2 className="text-xl font-bold mb-4">{t('pos.completeSale')}</h2>
+        <div className="fixed inset-0 bg-gray-700 bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+                <h2 className="text-xl font-bold mb-4">
+                    {context === 'account' ? t('accounts.makePayment') : t('pos.checkout')}
+                </h2>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Currency Toggle */}
-                    <div className="flex gap-4 mb-4">
+                {allowPartialPayment && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {t('accounts.paymentAmount', 'Monto a pagar')}
+                        </label>
+                        <input
+                            type="number"
+                            value={paymentAmount}
+                            onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                            className="w-full p-2 border rounded"
+                            min="0.01"
+                            max={total}
+                            step="0.01"
+                        />
+                    </div>
+                )}
+
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('common.total')}
+                    </label>
+                    <div className="text-2xl font-bold">
+                        {currency === 'USD' ? '$' : 'Bs. '}{displayTotal.toFixed(2)}
+                    </div>
+                </div>
+
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('common.currency')}
+                    </label>
+                    <div className="flex gap-2">
                         <button
                             type="button"
-                            onClick={() => handleCurrencyChange("USD")}
-                            className={`flex-1 py-2 rounded-md ${currency === "USD"
+                            onClick={() => handleCurrencyChange('USD')}
+                            className={`px-4 py-2 rounded ${currency === 'USD'
                                 ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 text-gray-700'
+                                : 'bg-gray-200 text-gray-800'
                                 }`}
                         >
                             USD
                         </button>
                         <button
                             type="button"
-                            onClick={() => handleCurrencyChange("BS")}
-                            className={`flex-1 py-2 rounded-md ${currency === "BS"
+                            onClick={() => handleCurrencyChange('BS')}
+                            className={`px-4 py-2 rounded ${currency === 'BS'
                                 ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 text-gray-700'
+                                : 'bg-gray-200 text-gray-800'
                                 }`}
                         >
-                            Bs.
+                            Bs
                         </button>
                     </div>
+                </div>
 
-                    {/* Amounts */}
-                    <div className="space-y-2">
-                        <div className="flex justify-between text-lg">
-                            <span>{t('common.subtotal')}:</span>
-                            <span>
-                                {currency === "USD" ? "$" : "Bs."}
-                                {totalInSelectedCurrency.toFixed(2)}
-                            </span>
-                        </div>
-                        {discount > 0 && (
-                            <div className="flex justify-between text-red-600">
-                                <span>{t('pos.discount')}:</span>
-                                <span>
-                                    -{currency === "USD" ? "$" : "Bs."}
-                                    {discountInSelectedCurrency.toFixed(2)}
-                                </span>
-                            </div>
-                        )}
-                        <div className="flex justify-between font-bold text-xl">
-                            <span>{t('common.total')}:</span>
-                            <span>
-                                {currency === "USD" ? "$" : "Bs."}
-                                {(totalInSelectedCurrency - discountInSelectedCurrency).toFixed(2)}
-                            </span>
-                        </div>
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('common.paymentMethod')}
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                        {getAvailableWallets().map(wallet => (
+                            <button
+                                key={wallet}
+                                type="button"
+                                onClick={() => setPaymentMethod(wallet)}
+                                className={`px-4 py-2 rounded ${paymentMethod === wallet
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-200 text-gray-800'
+                                    }`}
+                            >
+                                {wallet === 'CASH_USD' && 'Cash $'}
+                                {wallet === 'CASH_BS' && 'Cash Bs'}
+                                {wallet === 'TRANSFER_USD' && 'Zelle $'}
+                                {wallet === 'CUENTA_BS' && 'Cuenta Bs'}
+                            </button>
+                        ))}
                     </div>
+                </div>
 
-                    {/* Payment Method */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {t('pos.paymentMethod')}
+                {allowPartialPayment && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {t('common.paymentNote', 'Nota de pago')} ({t('common.optional')})
                         </label>
-                        <select
-                            value={selectedOption}
-                            onChange={(e) => setSelectedOption(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300"
-                        >
-                            {getAvailableWallets(currency).map(option => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                        <input
+                            type="text"
+                            value={paymentNote}
+                            onChange={(e) => setPaymentNote(e.target.value)}
+                            className="w-full p-2 border rounded"
+                            placeholder={t('accounts.paymentNotePlaceholder', 'Añadir una nota al pago...')}
+                        />
                     </div>
+                )}
 
-                    {/* Customer Name */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            {context === 'account' ? t('accounts.paymentNote') : t('pos.customerName')}
+                {context === 'pos' && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {t('common.customerName')} ({t('common.optional')})
                         </label>
                         <input
                             type="text"
                             value={customerName}
                             onChange={(e) => setCustomerName(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300"
+                            className="w-full p-2 border rounded"
+                            placeholder={t('pos.customerNamePlaceholder')}
                         />
                     </div>
+                )}
 
-                    {/* Buttons */}
-                    <div className="flex gap-3 pt-4">
-                        <button
-                            type="submit"
-                            className="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700"
-                        >
-                            {t('common.complete')}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onCancel}
-                            className="flex-1 bg-gray-100 py-2 rounded hover:bg-gray-200"
-                        >
-                            {t('common.cancel')}
-                        </button>
+                {error && (
+                    <div className="mb-4 text-red-600 text-sm">
+                        {error}
                     </div>
-                </form>
+                )}
+
+                <div className="flex justify-end space-x-2">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
+                        disabled={isProcessing}
+                    >
+                        {t('common.cancel')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleComplete}
+                        className="px-4 py-2 text-white bg-green-600 rounded hover:bg-green-700"
+                        disabled={isProcessing}
+                    >
+                        {isProcessing ? 'Procesando...' : t('common.complete')}
+                    </button>
+                </div>
             </div>
         </div>
     );

@@ -1,15 +1,27 @@
 // src/pages/register/RegisterControl.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Transaction, CashRegister, PaymentMethod, Product } from '../../types';
+import { Transaction, CashRegister, Product } from '../../types';
 import { cashRegisterOperations, transactionOperations, syncQueueOperations, productOperations, initDatabase } from '../../lib/database';
 import SalesSummary from '../../components/register/SalesSummary';
 import { saveAs } from 'file-saver';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { WalletAmounts } from '../../types';
 
-interface RegisterFormData extends WalletAmounts {
-    dollarRate: number;
+// Interfaz para los datos del formulario de apertura
+interface RegisterFormDataWithEmpty {
+    cashUSD: number | null;
+    cashBs: number | null;
+    transferUSD: number | null;
+    cuentaBs: number | null;
+    dollarRate: number | null;
+}
+
+// Interfaz para los montos de cierre
+interface WalletAmountsWithEmpty {
+    cashUSD: number | null;
+    cashBs: number | null;
+    transferUSD: number | null;
+    cuentaBs: number | null;
 }
 
 const RegisterControl = () => {
@@ -17,20 +29,21 @@ const RegisterControl = () => {
     const [error, setError] = useState<string | null>(null);
     const [currentRegister, setCurrentRegister] = useState<CashRegister | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [finalAmounts, setFinalAmounts] = useState<WalletAmounts>({
-        cashUSD: 0,
-        cashBs: 0,
-        transferUSD: 0,
-        cuentaBs: 0
-    });
     const { user } = useAuth();
     const { t } = useTranslation();
-    const [formData, setFormData] = useState<RegisterFormData>({
-        cashUSD: 0,
-        cashBs: 0,
-        transferUSD: 0,
-        cuentaBs: 0,
-        dollarRate: 0
+    const [formData, setFormData] = useState<RegisterFormDataWithEmpty>({
+        cashUSD: null,
+        cashBs: null,
+        transferUSD: null,
+        cuentaBs: null,
+        dollarRate: null
+    });
+
+    const [finalAmounts, setFinalAmounts] = useState<WalletAmountsWithEmpty>({
+        cashUSD: null,
+        cashBs: null,
+        transferUSD: null,
+        cuentaBs: null
     });
     const initRef = useRef(false);
     const [products, setProducts] = useState<Record<number, Product>>({});
@@ -104,6 +117,15 @@ const RegisterControl = () => {
     const handleOpenRegister = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // Crear un objeto con los valores asegurándose de que no sean null o vacíos
+        const safeFormData = {
+            cashUSD: formData.cashUSD ?? 0,
+            cashBs: formData.cashBs ?? 0,
+            transferUSD: formData.transferUSD ?? 0,
+            cuentaBs: formData.cuentaBs ?? 0,
+            dollarRate: formData.dollarRate ?? 0
+        };
+
         if (!window.confirm('¿Está seguro que desea abrir la caja con estos montos?')) {
             return;
         }
@@ -117,11 +139,11 @@ const RegisterControl = () => {
             const register: Omit<CashRegister, 'id'> = {
                 status: 'open',
                 openedAt: new Date(),
-                initialCashUSD: formData.cashUSD,
-                initialCashBs: formData.cashBs,
-                initialTransferUSD: formData.transferUSD,
-                initialCuentaBs: formData.cuentaBs,
-                dollarRate: formData.dollarRate,
+                initialCashUSD: safeFormData.cashUSD,
+                initialCashBs: safeFormData.cashBs,
+                initialTransferUSD: safeFormData.transferUSD,
+                initialCuentaBs: safeFormData.cuentaBs,
+                dollarRate: safeFormData.dollarRate,
                 userId: user.id,
                 deviceId: localStorage.getItem('deviceId') || 'unknown'
             };
@@ -129,11 +151,11 @@ const RegisterControl = () => {
             await cashRegisterOperations.create(register);
             // Reiniciar formulario
             setFormData({
-                cashUSD: 0,
-                cashBs: 0,
-                transferUSD: 0,
-                cuentaBs: 0,
-                dollarRate: 0
+                cashUSD: null,
+                cashBs: null,
+                transferUSD: null,
+                cuentaBs: null,
+                dollarRate: null
             });
             checkRegisterStatus();
         } catch (err) {
@@ -144,6 +166,14 @@ const RegisterControl = () => {
     const handleCloseRegister = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // Crear un objeto con valores seguros
+        const safeFinalAmounts = {
+            cashUSD: finalAmounts.cashUSD ?? 0,
+            cashBs: finalAmounts.cashBs ?? 0,
+            transferUSD: finalAmounts.transferUSD ?? 0,
+            cuentaBs: finalAmounts.cuentaBs ?? 0
+        };
+
         if (!window.confirm('¿Está seguro que desea cerrar la caja? Esta acción no se puede deshacer.')) {
             return;
         }
@@ -151,14 +181,14 @@ const RegisterControl = () => {
 
         try {
             // Validar que todos los montos sean válidos
-            if (Object.values(finalAmounts).some(amount => amount < 0)) {
+            if (Object.values(safeFinalAmounts).some(amount => amount < 0)) {
                 setError('Please enter valid amounts');
                 return;
             }
 
             // Generar el contenido del reporte
             console.log('Caja cerrada, generando reporte...');
-            const csvContent = await generateReportContent(); // Ahora es asíncrono
+            const csvContent = await generateReportContent();
 
             // Encolar el reporte para sincronización
             await syncQueueOperations.addOperation({
@@ -176,18 +206,18 @@ const RegisterControl = () => {
             await cashRegisterOperations.update(currentRegister.id, {
                 status: 'closed',
                 closedAt: new Date(),
-                finalCashUSD: finalAmounts.cashUSD,
-                finalCashBs: finalAmounts.cashBs,
-                finalTransferUSD: finalAmounts.transferUSD,
-                finalCuentaBs: finalAmounts.cuentaBs
+                finalCashUSD: safeFinalAmounts.cashUSD,
+                finalCashBs: safeFinalAmounts.cashBs,
+                finalTransferUSD: safeFinalAmounts.transferUSD,
+                finalCuentaBs: safeFinalAmounts.cuentaBs
             });
 
             console.log('Limpiando estado...');
             setFinalAmounts({
-                cashUSD: 0,
-                cashBs: 0,
-                transferUSD: 0,
-                cuentaBs: 0
+                cashUSD: null,
+                cashBs: null,
+                transferUSD: null,
+                cuentaBs: null
             });
             setTransactions([]);
             await checkRegisterStatus();
@@ -256,10 +286,10 @@ const RegisterControl = () => {
 
         // Calcular diferencias
         const differences = {
-            cashUSD: finalAmounts.cashUSD - expectedAmounts.cashUSD,
-            cashBs: finalAmounts.cashBs - expectedAmounts.cashBs,
-            transferUSD: finalAmounts.transferUSD - expectedAmounts.transferUSD,
-            cuentaBs: finalAmounts.cuentaBs - expectedAmounts.cuentaBs
+            cashUSD: (finalAmounts.cashUSD ?? 0) - expectedAmounts.cashUSD,
+            cashBs: (finalAmounts.cashBs ?? 0) - expectedAmounts.cashBs,
+            transferUSD: (finalAmounts.transferUSD ?? 0) - expectedAmounts.transferUSD,
+            cuentaBs: (finalAmounts.cuentaBs ?? 0) - expectedAmounts.cuentaBs
         };
 
         const totalDiscounts = activeTransactions.reduce((sum, t) => sum + t.discount, 0);
@@ -278,10 +308,10 @@ const RegisterControl = () => {
             ['Cuenta Bs', `${currentRegister.initialCuentaBs.toFixed(2)}`],
             [''],
             ['Montos Finales'],
-            ['Efectivo USD', `$${finalAmounts.cashUSD.toFixed(2)}`],
-            ['Efectivo Bs', `${finalAmounts.cashBs.toFixed(2)}`],
-            ['Transferencia USD', `$${finalAmounts.transferUSD.toFixed(2)}`],
-            ['Cuenta Bs', `${finalAmounts.cuentaBs.toFixed(2)}`],
+            ['Efectivo USD', `$${(finalAmounts.cashUSD ?? 0).toFixed(2)}`],
+            ['Efectivo Bs', `${(finalAmounts.cashBs ?? 0).toFixed(2)}`],
+            ['Transferencia USD', `$${(finalAmounts.transferUSD ?? 0).toFixed(2)}`],
+            ['Cuenta Bs', `${(finalAmounts.cuentaBs ?? 0).toFixed(2)}`],
             [''],
             ['Ventas por Método de Pago'],
             ['Efectivo USD', `$${totalsByWallet.cashUSD.toFixed(2)}`],
@@ -470,7 +500,7 @@ const RegisterControl = () => {
 
     const DollarRateInput: React.FC = () => {
         const [isEditing, setIsEditing] = useState(false);
-        const [tempRate, setTempRate] = useState(currentRegister?.dollarRate || 0);
+        const [tempRate, setTempRate] = useState(currentRegister?.dollarRate || null);
         const inputRef = useRef<HTMLInputElement>(null);
 
         useEffect(() => {
@@ -483,7 +513,7 @@ const RegisterControl = () => {
             try {
                 if (!currentRegister) return;
                 await cashRegisterOperations.update(currentRegister.id, {
-                    dollarRate: tempRate
+                    dollarRate: tempRate ?? 0
                 });
                 setIsEditing(false);
                 checkRegisterStatus();
@@ -500,8 +530,11 @@ const RegisterControl = () => {
                 <input
                     ref={inputRef}
                     type="number"
-                    value={tempRate}
-                    onChange={(e) => setTempRate(parseFloat(e.target.value) || 0)}
+                    value={tempRate === null ? '' : tempRate}
+                    onChange={(e) => {
+                        const inputValue = e.target.value;
+                        setTempRate(inputValue === '' ? null : parseFloat(inputValue))
+                    }}
                     disabled={!isEditing}
                     step="0.01"
                     min="0"
@@ -564,74 +597,86 @@ const RegisterControl = () => {
 
                         <form onSubmit={handleCloseRegister} className="mt-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                                {/* Monto Final Cash USD */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">
                                         Monto Final Cash USD
                                     </label>
                                     <input
                                         type="number"
-                                        value={finalAmounts.cashUSD}
-                                        onChange={(e) => setFinalAmounts(prev => ({
-                                            ...prev,
-                                            cashUSD: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={finalAmounts.cashUSD === null ? '' : finalAmounts.cashUSD}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFinalAmounts(prev => ({
+                                                ...prev,
+                                                cashUSD: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
 
+                                {/* Monto Final Transfer USD */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">
                                         Monto Final Transfer USD
                                     </label>
                                     <input
                                         type="number"
-                                        value={finalAmounts.transferUSD}
-                                        onChange={(e) => setFinalAmounts(prev => ({
-                                            ...prev,
-                                            transferUSD: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={finalAmounts.transferUSD === null ? '' : finalAmounts.transferUSD}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFinalAmounts(prev => ({
+                                                ...prev,
+                                                transferUSD: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
 
+                                {/* Monto Final Cash Bs */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">
                                         Monto Final Cash Bs
                                     </label>
                                     <input
                                         type="number"
-                                        value={finalAmounts.cashBs}
-                                        onChange={(e) => setFinalAmounts(prev => ({
-                                            ...prev,
-                                            cashBs: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={finalAmounts.cashBs === null ? '' : finalAmounts.cashBs}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFinalAmounts(prev => ({
+                                                ...prev,
+                                                cashBs: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
 
+                                {/* Monto Final Cuenta Bs */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">
                                         Monto Final Cuenta Bs
                                     </label>
                                     <input
                                         type="number"
-                                        value={finalAmounts.cuentaBs}
-                                        onChange={(e) => setFinalAmounts(prev => ({
-                                            ...prev,
-                                            cuentaBs: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={finalAmounts.cuentaBs === null ? '' : finalAmounts.cuentaBs}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFinalAmounts(prev => ({
+                                                ...prev,
+                                                cuentaBs: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
@@ -657,11 +702,14 @@ const RegisterControl = () => {
                             </label>
                             <input
                                 type="number"
-                                value={formData.dollarRate}
-                                onChange={(e) => setFormData(prev => ({
-                                    ...prev,
-                                    dollarRate: parseFloat(e.target.value) || 0
-                                }))}
+                                value={formData.dollarRate === null ? '' : formData.dollarRate}
+                                onChange={(e) => {
+                                    const inputValue = e.target.value;
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        dollarRate: inputValue === '' ? null : parseFloat(inputValue)
+                                    }));
+                                }}
                                 step="0.01"
                                 min="0"
                                 required
@@ -678,14 +726,16 @@ const RegisterControl = () => {
                                     </label>
                                     <input
                                         type="number"
-                                        value={formData.cashUSD}
-                                        onChange={(e) => setFormData(prev => ({
-                                            ...prev,
-                                            cashUSD: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={formData.cashUSD === null ? '' : formData.cashUSD}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                cashUSD: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
@@ -695,14 +745,16 @@ const RegisterControl = () => {
                                     </label>
                                     <input
                                         type="number"
-                                        value={formData.transferUSD}
-                                        onChange={(e) => setFormData(prev => ({
-                                            ...prev,
-                                            transferUSD: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={formData.transferUSD === null ? '' : formData.transferUSD}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                transferUSD: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
@@ -719,14 +771,16 @@ const RegisterControl = () => {
                                     </label>
                                     <input
                                         type="number"
-                                        value={formData.cashBs}
-                                        onChange={(e) => setFormData(prev => ({
-                                            ...prev,
-                                            cashBs: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={formData.cashBs === null ? '' : formData.cashBs}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                cashBs: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>
@@ -736,14 +790,16 @@ const RegisterControl = () => {
                                     </label>
                                     <input
                                         type="number"
-                                        value={formData.cuentaBs}
-                                        onChange={(e) => setFormData(prev => ({
-                                            ...prev,
-                                            cuentaBs: parseFloat(e.target.value) || 0
-                                        }))}
+                                        value={formData.cuentaBs === null ? '' : formData.cuentaBs}
+                                        onChange={(e) => {
+                                            const inputValue = e.target.value;
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                cuentaBs: inputValue === '' ? null : parseFloat(inputValue)
+                                            }));
+                                        }}
                                         step="0.01"
                                         min="0"
-                                        required
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     />
                                 </div>

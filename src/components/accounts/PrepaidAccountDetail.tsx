@@ -66,7 +66,7 @@ const PrepaidAccountDetail: React.FC<PrepaidAccountDetailProps> = ({ account, on
                 .map(item => `${item.product} x ${item.quantity}`)
                 .join('\n');
 
-            const confirmMessage = `${t('accounts.confirmConsumptionPrompt')}:\n\n${itemsList}`;
+            const confirmMessage = `${t('accounts.confirmConsumption')}:\n\n${itemsList}`;
 
             if (!window.confirm(confirmMessage)) {
                 return; // Usuario canceló
